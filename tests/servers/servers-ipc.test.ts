@@ -75,6 +75,7 @@ describe("registerIpc servers handlers", () => {
         connect: () => handlers2.onError(new Error("dial refused")),
         end: () => {},
         exec: (_c, cb) => cb(undefined, null),
+        forwardOut: () => {},
       };
       return rpc;
     };
@@ -208,11 +209,12 @@ describe("registerIpc servers handlers", () => {
     delete (configs[0] as Record<string, unknown>).password; // don't leave secrets in test state
   });
 
-  it("not-wired harnesses get well-formed responses (list [] / status {} / save ok:false)", () => {
+  it("not-wired harnesses get well-formed responses (list [] / status {} / save ok:false)", async () => {
     handlers.clear();
     registerIpc({ db: null as never, provider: null as never });
     expect(call<unknown[]>(IPC.serversList)).toEqual([]);
-    expect(call<Record<string, unknown>>(IPC.serversStatus)).toEqual({});
+    // serversStatus is async now (the Pass R health merge rides it).
+    await expect(call<unknown>(IPC.serversStatus)).resolves.toEqual({});
     expect(call<{ ok: boolean; error: string }>(IPC.serversSave, {}).ok).toBe(
       false,
     );

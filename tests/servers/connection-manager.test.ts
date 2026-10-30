@@ -20,6 +20,8 @@ function makeFactory() {
       onDown?(err: Error | null): void;
     };
     execs: Exec[];
+    /** Recorded forwardOut targets, for transport tests. */
+    fwd: Array<[string, number]>;
     ended: boolean;
     up: boolean;
     down: boolean;
@@ -36,6 +38,7 @@ function makeFactory() {
     const live: Live = {
       handlers,
       execs: [],
+      fwd: [],
       ended: false,
       up: false,
       down: false,
@@ -49,6 +52,9 @@ function makeFactory() {
       },
       exec: (_cmd, cb) => {
         live.execs.push(cb);
+      },
+      forwardOut: (_sh, _sp, dh, dp) => {
+        live.fwd.push([dh, dp]);
       },
     };
     return rpc;
