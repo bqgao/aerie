@@ -28,17 +28,12 @@ const EDIT_TOOLS = new Set([
   "patch",
 ]);
 
-/** Tools whose row should read the file/pattern they touched; everything else falls back to compact
- *  JSON of the input (truncated — the row is a hint; the drill-in modal carries full detail). */
-const PATH_TOOLS = new Set([
-  "read",
-  "grep",
-  "glob",
-  "find",
-  "ls",
-  "webfetch",
-  "websearch",
-]);
+/** Tool shapes whose row should read the file they touched. */
+const FILE_TOOLS = new Set(["read", "ls"]);
+/** Search-style tools: the pattern (what was asked) reads better than where it ran. */
+const PATTERN_TOOLS = new Set(["grep", "glob", "find", "websearch"]);
+/** URL-reading tool. */
+const URL_TOOLS = new Set(["webfetch"]);
 
 /** Exact rendered line count of an output text (a trailing newline adds no phantom line) — same rule
  *  as codex's outputLineCount, so both agents' tool rows agree. */
@@ -59,16 +54,21 @@ function partStatus(st: Record<string, unknown>): "ok" | "error" | "pending" {
 /** The edit hunk from an edit-shaped tool's input. Key fallbacks are ordered by the LIVE shapes first
  *  (v2.0.28 edit/write above), with claude-style snake aliases kept for fronted third-party agents. */
 function hunkFromInput(input: Record<string, unknown>): DiffHunk {
-  const str = (keys: string[]): string => {
+  const str = (keys: string[]): string | null => {
     for (const k of keys) {
       const v = input[k];
       if (typeof v === "string") return v;
     }
-    return "";
+    return null;
   };
   const removed = str(["oldString", "old_string"]);
   const added = str(["newString", "new_string", "content"]);
-  return { removed: removed.split("\n"), added: added.split("\n") };
+  // A write carries no old text: the removed side stays EMPTY (not [''] — an empty string splits
+  // into one empty "line", which would draw a phantom deletion row).
+  return {
+    removed: removed && removed.length > 0 ? removed.split("\n") : [],
+    added: added ? added.split("\n") : [],
+  };
 }
 
 /** The file path an edit-shaped tool touched, under every key any fronted agent has used. */
@@ -95,7 +95,9 @@ export function oneLiner(name: string, input: Record<string, unknown>): string {
   };
   if (lower === "bash" || lower === "shell" || lower === "zsh")
     return s(["command", "cmd"]);
-  if (PATH_TOOLS.has(lower)) return s(["path", "pattern", "url", "query"]);
+  if (PATTERN_TOOLS.has(lower)) return s(["pattern", "query"]);
+  if (URL_TOOLS.has(lower)) return s(["url"]);
+  if (FILE_TOOLS.has(lower)) return s(["path", "pattern"]);
   if (EDIT_TOOLS.has(lower)) return fileFromInput(input);
   try {
     return JSON.stringify(input).slice(0, 200);

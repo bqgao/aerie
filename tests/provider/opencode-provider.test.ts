@@ -1,0 +1,312 @@
+import { describe, it, expect } from "vitest";
+import { createOpenCodeProvider } from "../../src/main/provider/opencode";
+import type { OpencodeSessionRow } from "../../src/main/provider/opencode/client";
+import { fromTranscriptWire } from "../../src/shared/transcript";
+import sessions from "../fixtures/opencode/sessions.json";
+import messages from "../fixtures/opencode/messages.json";
+
+/** The redacted live-shape fixtures (tests/fixtures/opencode) as the typed rows the client
+ *  produces — one cast at the seams; the shapes below the cast are defended in the client. */
+const rows = sessions.data as OpencodeSessionRow[];
+const msgRows = messages.data as unknown[];
+
+const ROOT = rows.find((r) => r.id === "ses_e791abb58ffeIDGs2u7KpqxUtv")!;
+
+/** An offline fake service: answers with the given endpoint (null = no service) and counts
+ *  resolves/invalidates so tests can see discovery behavior directly. */
+function fakeService(
+  endpoint: { baseUrl: string; password: string | null } | null,
+) {
+  return {
+    resolves: 0,
+    invalidates: 0,
+    resolve: () => {
+      fakeServiceCounter.resolves++;
+      return Promise.resolve(endpoint);
+    },
+    invalidate: () => {
+      fakeServiceCounter.invalidates++;
+    },
+  };
+}
+const fakeServiceCounter = { resolves: 0, invalidates: 0 };
+
+/** A canned fetchFn: routes by path, tracks requests. */
+function fakeFetch(routes: {
+  session?: unknown;
+  active?: unknown;
+  messages?: unknown;
+  /** Each fetch leg fails on its own side (connect failure). */
+  refuse?: boolean;
+  failMessages?: boolean;
+}) {
+  const requests: string[] = [];
+  const fetchFn = (url: string): Promise<Response> => {
+    requests.push(url);
+    if (routes.refuse) return Promise.reject(new Error("ECONNREFUSED"));
+    const path = url;
+    const json = (body: unknown): Response =>
+      new Response(JSON.stringify(body), { status: 200 });
+    if (path.includes("/api/session/active")) {
+      return Promise.resolve(json(routes.active));
+    }
+    if (path.includes("/message")) {
+      if (routes.failMessages) return Promise.reject(new Error("ECONNREFUSED"));
+      return Promise.resolve(json(routes.messages));
+    }
+    if (path.includes("/api/session")) {
+      return Promise.resolve(json(routes.session));
+    }
+    return Promise.resolve(new Response("no route", { status: 404 }));
+  };
+  return { fetchFn, requests };
+}
+
+const BASE = { baseUrl: "http://127.0.0.1:49374", password: "pw" };
+
+function makeProvider(opts: {
+  session?: unknown;
+  active?: unknown;
+  messages?: unknown;
+  refuse?: boolean;
+  failMessages?: boolean;
+  noService?: boolean;
+  now?: () => number;
+  recentWindowMs?: number;
+  managed?: {
+    has(id: string): boolean;
+    cwdOf?(id: string): string | undefined;
+  };
+}) {
+  const service = fakeService(opts.noService ? null : BASE);
+  fakeServiceCounter.resolves = 0;
+  fakeServiceCounter.invalidates = 0;
+  const { fetchFn } = fakeFetch({
+    session: opts.session,
+    active: opts.active,
+    messages: opts.messages,
+    refuse: opts.refuse,
+    failMessages: opts.failMessages,
+  });
+  const p = createOpenCodeProvider({
+    service,
+    fetchFn,
+    now: opts.now,
+    recentWindowMs: opts.recentWindowMs,
+    managed: opts.managed,
+  });
+  return { p, service };
+}
+
+describe("createOpenCodeProvider", () => {
+  it("is inert with no service: empty candidates, absent reads", async () => {
+    const { p } = makeProvider({ noService: true });
+    expect(await p.listCandidates()).toEqual([]);
+    expect(await p.readTranscript("ses_x")).toEqual({ status: "absent" });
+    expect(p.resolveSessionCwd("ses_x")).toBeNull();
+    expect(p.resolveTranscriptPath("ses_x")).toBeNull();
+  });
+
+  it("maps a session row to a candidate: agent/id/cwd/freshness, token = time.updated", async () => {
+    const nowMs = (ROOT.time?.updated ?? 0) + 5_000; // inside the 10s working window
+    const { p } = makeProvider({
+      session: { data: [ROOT], cursor: null },
+      active: { data: {} },
+      now: () => nowMs,
+    });
+    const [c] = await p.listCandidates();
+    expect(c).toMatchObject({
+      id: ROOT.id,
+      agent: "opencode",
+      cwd: "/Users/bqgao",
+      status: "busy",
+      alive: true,
+    });
+    // No codex-style relationship markers: opencode rows are flat sessions (child lanes skipped).
+    expect(c.threadKind).toBeUndefined();
+    expect(c.parentSessionId).toBeUndefined();
+    expect(c.transcriptMtimeMs).toBe(ROOT.time?.updated);
+    expect(c.transcriptPath).toBeUndefined();
+  });
+
+  it("stale rows are not alive (ended); /active membership overrides staleness", async () => {
+    const staleUpdated = ROOT.time?.updated ?? 0;
+    const nowMs = staleUpdated + 60_000 - 90;
+    const { p } = makeProvider({
+      session: { data: [ROOT], cursor: null },
+      active: { data: { [ROOT.id]: { type: "running" } } },
+      now: () => nowMs,
+    });
+    let [c] = await p.listCandidates();
+    expect(c.alive).toBe(true);
+    expect(c.status).toBeUndefined();
+
+    const { p: p2 } = makeProvider({
+      session: { data: [ROOT], cursor: null },
+      active: { data: {} },
+      now: () => nowMs,
+    });
+    [c] = await p2.listCandidates();
+    expect(c.alive).toBe(false);
+    expect((await p2.summarize(c)).state).toBe("ended");
+  });
+
+  it("skips parentID (subagent-lane) rows and stale rows outside the recent window", async () => {
+    const child = { ...ROOT, id: "ses_child1", parentID: ROOT.id };
+    const old = {
+      ...ROOT,
+      id: "ses_old",
+      time: { created: 1793264534706, updated: 1000 }, // epoch 1s — ancient by construction
+    };
+    const nowMs = (ROOT.time?.updated ?? 0) + 1_000;
+    const { p } = makeProvider({
+      session: { data: [child, old, ROOT], cursor: null },
+      active: { data: {} },
+      now: () => nowMs,
+      recentWindowMs: 30 * 24 * 60 * 60 * 1000,
+    });
+    const cands = await p.listCandidates();
+    expect(cands.map((x) => x.id)).toEqual([ROOT.id]);
+    // A managed id always surfaces, however stale.
+    const { p: withManaged } = makeProvider({
+      session: { data: [old], cursor: null },
+      active: { data: {} },
+      now: () => nowMs,
+      managed: { has: (id) => id === "ses_old" },
+    });
+    expect((await withManaged.listCandidates()).map((x) => x.id)).toEqual([
+      "ses_old",
+    ]);
+  });
+
+  it("summarize carries title/cwd/usage/model from the row; restate re-derives state", async () => {
+    const nowMs = (ROOT.time?.updated ?? 0) + 1_000;
+    const { p } = makeProvider({
+      session: { data: [ROOT], cursor: null },
+      active: { data: {} },
+      now: () => nowMs,
+    });
+    const cands = await p.listCandidates();
+    const s = await p.summarize(cands[0]);
+    expect(s.agent).toBe("opencode");
+    expect(s.cwd).toBe(ROOT.location?.directory ?? "");
+    expect(s.modelRaw).toBe(`${ROOT.model?.providerID}/${ROOT.model?.id}`);
+    expect(s.title.length).toBeGreaterThan(0);
+    // OpenCode's reasoning count is generated output — it folds into outputTokens (usage.ts).
+    expect(s.usage.inputTokens).toBe(ROOT.tokens?.input);
+    expect(s.usage.outputTokens).toBe(
+      (ROOT.tokens?.output ?? 0) + (ROOT.tokens?.reasoning ?? 0),
+    );
+    expect(s.usage.cacheReadTokens).toBe(ROOT.tokens?.cache?.read);
+    expect(s.usage.cacheCreationTokens).toBe(ROOT.tokens?.cache?.write);
+    expect(s.usageByModel).toEqual([]);
+    expect(s.lastActivityMs).toBe(ROOT.time?.updated);
+    expect(s.createdMs).toBe(ROOT.time?.created);
+
+    // restate: state rides the candidate's liveness, management re-checks the registry.
+    const prev = await p.summarize(cands[0]);
+    const staleCand = { ...cands[0], alive: false };
+    expect(p.restate(staleCand, prev)).toMatchObject({
+      state: "ended",
+      management: "observed",
+    });
+  });
+
+  it("readTranscript honors the row token: unchanged without a refetch, changed otherwise", async () => {
+    const { p } = makeProvider({
+      session: { data: [ROOT], cursor: null },
+      active: { data: {} },
+      messages: { data: msgRows, cursor: null },
+      now: () => (ROOT.time?.updated ?? 0) + 1_000,
+    });
+    // Warm the row cache with a sweep, then read.
+    await p.listCandidates();
+    const unchanged = await p.readTranscript(ROOT.id, ROOT.time?.updated);
+    expect(unchanged).toEqual({
+      status: "unchanged",
+      mtimeMs: ROOT.time?.updated,
+    });
+    const first = fromTranscriptWire(await p.readTranscript(ROOT.id));
+    if (first.status !== "changed")
+      throw new Error(`expected changed, got ${first.status}`);
+    expect(first.mtimeMs).toBe(ROOT.time?.updated);
+    expect(first.doc.events.length).toBeGreaterThan(0);
+    expect(first.doc.subagents).toEqual([]);
+    // Second read with the SAME token → unchanged (no re-fetch happened: the fixture would have
+    // served changed again).
+    expect(await p.readTranscript(ROOT.id, first.mtimeMs)).toEqual({
+      status: "unchanged",
+      mtimeMs: first.mtimeMs,
+    });
+  });
+
+  it("readTranscript settles absent for an unknown id and error when messages fail", async () => {
+    const { p } = makeProvider({
+      session: { data: [ROOT], cursor: null },
+      active: { data: {} },
+      failMessages: true,
+      now: () => (ROOT.time?.updated ?? 0) + 1_000,
+    });
+    // Unknown id → absent (never an error: a deleted session must empty out).
+    expect(await p.readTranscript("ses_unknown")).toEqual({ status: "absent" });
+    // A session whose message leg fails re-discovers (client retry), then settles error — the
+    // transient contract (keep the last doc, retry).
+    expect(await p.readTranscript(ROOT.id, 12345)).toEqual({ status: "error" });
+    // The invalidation hook fired on the failing leg (the re-discovery trigger).
+    expect(fakeServiceCounter.invalidates).toBeGreaterThan(0);
+  });
+
+  it("overlaySessions attaches the row's cost to opencode rows only", async () => {
+    const { p } = makeProvider({
+      session: { data: [ROOT], cursor: null },
+      active: { data: {} },
+      now: () => (ROOT.time?.updated ?? 0) + 1_000,
+    });
+    await p.listCandidates();
+    const oc = { id: ROOT.id, agent: "opencode", costUsd: undefined } as never;
+    const other = { id: "x", agent: "claude", costUsd: 99 } as never;
+    const [ocOut, otherOut] = p.overlaySessions([oc, other]);
+    expect((ocOut as unknown as Record<string, unknown>).costUsd).toBe(
+      ROOT.cost,
+    );
+    expect(otherOut).toBe(other);
+  });
+
+  it("readMetrics: changed snapshot with the composite token, unchanged on repeat, absent unknown", async () => {
+    const { p } = makeProvider({
+      session: { data: [ROOT], cursor: null },
+      active: { data: {} },
+      messages: { data: msgRows, cursor: null },
+      now: () => (ROOT.time?.updated ?? 0) + 1_000,
+    });
+    await p.listCandidates();
+    // The fixture cwd isn't a repo → git/pr null; two assistant messages → speed may synthesize.
+    const first = await p.readMetrics(ROOT.id);
+    expect(first.status).toBe("changed");
+    if (first.status !== "changed") return;
+    expect(first.metrics.git).toBeNull();
+    expect(first.metrics.voiceEnabled).toBeNull();
+    expect(first.metrics.remoteControl).toBeNull();
+    // The same token echoed back → unchanged (no message refetch).
+    expect(await p.readMetrics(ROOT.id, first.mtimeMs)).toEqual({
+      status: "unchanged",
+      mtimeMs: first.mtimeMs,
+    });
+    expect(await p.readMetrics("ses_unknown")).toEqual({ status: "absent" });
+  });
+
+  it("a connection failure without a service is inert, and unimplemented arms settle absent", async () => {
+    const { p } = makeProvider({ refuse: true, noService: true });
+    expect(await p.listCandidates()).toEqual([]);
+    expect(await p.readTasks("ses_x")).toEqual({ status: "absent" });
+    expect(await p.readShells("ses_x")).toEqual({ status: "absent" });
+    expect(await p.readMonitors("ses_x")).toEqual({ status: "absent" });
+    expect(await p.readSubagentTranscript("ses_x", "a")).toEqual({
+      status: "absent",
+    });
+    expect(await p.readShellOutput("ses_x", "s")).toEqual({ status: "absent" });
+    expect(await p.readMonitorOutput("ses_x", "m")).toEqual({
+      status: "absent",
+    });
+  });
+});

@@ -40,7 +40,10 @@ export function extractToolResult(
       name = typeof p.name === "string" ? p.name : "tool";
       const state = asRecord(p.state);
       if (!state) continue;
-      command = friendlyCommand(name, asRecord(state.input));
+      // An input-less state (the error case verified live) still lands a label: produced via
+      // `command || name`, so the modal's command bar reads the tool name instead of blank.
+      const produced = friendlyCommand(name, asRecord(state.input)) || name;
+      command = produced;
       const isError =
         state.status === "error" || !!asRecord(state.metadata)?.error;
       status = isError
@@ -63,7 +66,8 @@ export function extractToolResult(
   if (!saw) return { found: false };
   return {
     found: true,
-    command: command ?? name, // no parseable input → the tool's name keeps the command bar honest
+    // The label is guaranteed non-empty: oneLiner output or the tool's name (see above).
+    command: command ?? name,
     output,
     status,
   };

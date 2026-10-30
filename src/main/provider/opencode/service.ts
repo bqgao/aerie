@@ -182,9 +182,11 @@ export function createServiceDiscovery(
       return inFlight;
     },
     invalidate(): void {
-      if (!cached) return;
+      // Un-throttle unconditionally: the caller failed a live read against whatever this resolver
+      // had (or had nothing) — the next read must re-discover NOW, not after the 60s window.
       cached = null;
-      lastFailureMs = -Infinity; // the connection error already paid the throttle
+      inFlight = null;
+      lastFailureMs = -Infinity;
       startAttempted = false;
     },
   };
