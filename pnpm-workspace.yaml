@@ -1,13 +1,16 @@
-# pnpm v11 reads project settings from here, not the "pnpm" field in
-# package.json. allowBuilds replaces the old onlyBuiltDependencies list: it names
-# the dependencies allowed to run install/build scripts — our native modules and
-# Electron's binary download.
+# pnpm 11 reads its per-project settings from this file. `allowBuilds` gates which dependencies may
+# run install-time build scripts. The four `true` entries are the pre-existing native/asset builds
+# this app always ran (Electron's binary download, esbuild's binary, better-sqlite3/node-pty native
+# builds — rebuilt against Electron's ABI by `pnpm rebuild:native`).
+#
+# ssh2 is the Pass S1 dependency and is deliberately `false`: its install script only tries to
+# compile the OPTIONAL native `cpu-features` accelerator. ssh2 is fine pure-JS — hard requirement:
+# no native dependencies beyond better-sqlite3/node-pty. Keep both as false; a future `pnpm
+# approve-builds` must not silently flip them on.
 allowBuilds:
   better-sqlite3: true
-  node-pty: true
+  cpu-features: false
   electron: true
   esbuild: true
-  # Squirrel.Windows tooling pulled in transitively by electron-builder. The
-  # Windows build uses NSIS (app-builder), not Squirrel, so these install
-  # scripts never need to run.
-  electron-winstaller: false
+  node-pty: true
+  ssh2: false
