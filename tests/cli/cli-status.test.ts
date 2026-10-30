@@ -106,4 +106,26 @@ describe("AGENT_PROBES", () => {
       checkAuth: false,
     });
   });
+  // opencode: a version floor (the provider's v2 API contract) but the same no-auth posture as
+  // codex — the service talks through opencode's own background service, no login gate to probe.
+  it("opencode probe spec floors the v2 line and skips the auth stage", () => {
+    expect(AGENT_PROBES.opencode).toMatchObject({
+      binary: "opencode",
+      floor: "2.0.0",
+      checkAuth: false,
+    });
+  });
+  it("an opencode --version output above the floor classifies ready", () => {
+    // `--version` prints "opencode v2.0.28" — bare-text form; parseSemver scans inside.
+    const s = evaluateCliStatus({
+      version: { status: "ok", raw: "opencode v2.0.28" },
+      auth: { status: "unknown" },
+      floor: "2.0.0",
+      productPattern: /opencode/i,
+      configDir: { active: "~/.config/opencode" },
+      now: 0,
+    });
+    expect(s.kind).toBe("ready");
+    expect(s.version).toBe("2.0.28");
+  });
 });

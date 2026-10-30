@@ -1984,8 +1984,8 @@ describe("readAnalyticsDbCounts", () => {
       }),
     ]);
     expect(readAnalyticsDbCounts(db)).toEqual({
-      turns: { total: 3, byAgent: { claude: 2, codex: 1 } },
-      sessions: { total: 2, byAgent: { claude: 1, codex: 1 } },
+      turns: { total: 3, byAgent: { claude: 2, codex: 1, opencode: 0 } },
+      sessions: { total: 2, byAgent: { claude: 1, codex: 1, opencode: 0 } },
       oldestTs: 1000,
       processedFiles: 0,
       worktrees: 0,
@@ -1996,8 +1996,8 @@ describe("readAnalyticsDbCounts", () => {
     const db = openTestDb();
     migrateAnalytics(db);
     expect(readAnalyticsDbCounts(db)).toEqual({
-      turns: { total: 0, byAgent: { claude: 0, codex: 0 } },
-      sessions: { total: 0, byAgent: { claude: 0, codex: 0 } },
+      turns: { total: 0, byAgent: { claude: 0, codex: 0, opencode: 0 } },
+      sessions: { total: 0, byAgent: { claude: 0, codex: 0, opencode: 0 } },
       oldestTs: null,
       processedFiles: 0,
       worktrees: 0,

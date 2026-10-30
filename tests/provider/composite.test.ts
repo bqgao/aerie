@@ -3,14 +3,20 @@ import { createCompositeProvider } from "../../src/main/provider/composite";
 import type { Provider } from "../../src/main/provider/types";
 import type { SessionCandidate } from "@shared/types";
 
-const cand = (id: string, agent: "claude" | "codex"): SessionCandidate => ({
+const cand = (
+  id: string,
+  agent: "claude" | "codex" | "opencode",
+): SessionCandidate => ({
   id,
   agent,
   alive: false,
   cwd: "/w",
   transcriptMtimeMs: 1,
 });
-function fake(agent: "claude" | "codex", calls: string[]): Provider {
+function fake(
+  agent: "claude" | "codex" | "opencode",
+  calls: string[],
+): Provider {
   return {
     id: agent,
     listCandidates: () => [cand(`${agent}-1`, agent)],
@@ -53,24 +59,43 @@ describe("createCompositeProvider", () => {
   it("unions listCandidates and dispatches summarize/restate by candidate.agent", async () => {
     const calls: string[] = [];
     const p = createCompositeProvider(
-      { claude: fake("claude", calls), codex: fake("codex", calls) },
+      {
+        claude: fake("claude", calls),
+        codex: fake("codex", calls),
+        opencode: fake("opencode", calls),
+      },
       () => "claude",
     );
     const cands = await p.listCandidates();
-    expect(cands.map((c) => c.id).sort()).toEqual(["claude-1", "codex-1"]);
+    expect(cands.map((c) => c.id).sort()).toEqual([
+      "claude-1",
+      "codex-1",
+      "opencode-1",
+    ]);
     await p.summarize(cands.find((c) => c.agent === "codex")!);
     expect(calls).toContain("summarize:codex:codex-1");
   });
   it("routes per-id reads through the agent resolver", async () => {
     const calls: string[] = [];
     const p = createCompositeProvider(
-      { claude: fake("claude", calls), codex: fake("codex", calls) },
-      (id) => (id.startsWith("codex") ? "codex" : "claude"),
+      {
+        claude: fake("claude", calls),
+        codex: fake("codex", calls),
+        opencode: fake("opencode", calls),
+      },
+      (id) =>
+        id.startsWith("codex")
+          ? "codex"
+          : id.startsWith("opencode")
+            ? "opencode"
+            : "claude",
     );
     await p.readTranscript("codex-9");
+    await p.readTranscript("opencode-9");
     p.resolveSessionCwd("someone");
     p.resolveTranscriptPath("codex-10");
     expect(calls).toContain("readTranscript:codex:codex-9");
+    expect(calls).toContain("readTranscript:opencode:opencode-9");
     expect(calls).toContain("cwd:claude:someone");
     expect(calls).toContain("path:codex:codex-10");
   });

@@ -49,6 +49,12 @@ describe("buildResumeCommand", () => {
       args: ["resume", "u-1"],
     });
   });
+  it("opencode: --session pins the id (continue-or-create, same shape as its spawn)", () => {
+    expect(buildResumeCommand({ agent: "opencode", id: "ses_x" })).toEqual({
+      file: "opencode",
+      args: ["--session", "ses_x"],
+    });
+  });
   it("codex resume routes through the win32 PATHEXT shim like every bare command", () => {
     expect(
       launchForm(buildResumeCommand({ agent: "codex", id: "u-1" }), "win32"),
@@ -146,6 +152,37 @@ describe("buildSpawnCommand", () => {
     expect(
       buildSpawnCommand({ agent: "codex", id: "s", model: "opus" }).args,
     ).toEqual([]);
+  });
+  it("opencode → the binary with the pinned minted id (claude-style deterministic claim)", () => {
+    expect(
+      buildSpawnCommand({ agent: "opencode", id: "ses_new", model: "default" }),
+    ).toEqual({ file: "opencode", args: ["--session", "ses_new"] });
+  });
+  it("opencode appends extraArgs after the pin, like every agent", () => {
+    expect(
+      buildSpawnCommand({
+        agent: "opencode",
+        id: "ses_new",
+        model: "default",
+        extraArgs: ["--flag", "v"],
+      }).args,
+    ).toEqual(["--session", "ses_new", "--flag", "v"]);
+  });
+  it("opencode ignores a non-default model selection (models are chosen in its TUI, documented-ignored)", () => {
+    expect(
+      buildSpawnCommand({ agent: "opencode", id: "s", model: "opus" }).args,
+    ).toEqual(["--session", "s"]);
+  });
+  it("opencode --session routes through the win32 PATHEXT shim like the other bare commands", () => {
+    expect(
+      launchForm(
+        buildSpawnCommand({ agent: "opencode", id: "ses_x", model: "default" }),
+        "win32",
+      ),
+    ).toEqual({
+      file: "cmd.exe",
+      args: ["/c", "opencode", "--session", "ses_x"],
+    });
   });
   it("bare codex routes through the win32 PATHEXT shim like claude does", () => {
     expect(launchForm({ file: "codex", args: [] }, "win32")).toEqual({
