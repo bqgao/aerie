@@ -46,6 +46,15 @@ export const AGENT_PROBES: Record<AgentId, AgentProbeSpec> = {
     productPattern: null,
     checkAuth: false,
   },
+  // opencode: floor at the v2 line (this provider's API contract); the probe's product tag only
+  // fires on parenthesized version tags (opencode's `opencode vX.Y.Z` has none), so it's belt-and-
+  // braces. No auth stage: the service talks through opencode's own background service.
+  opencode: {
+    binary: AGENTS.opencode.binary,
+    floor: "2.0.0",
+    productPattern: /opencode/i,
+    checkAuth: false,
+  },
 };
 
 export function evaluateCliStatus(p: CliProbeInput): CliStatus {

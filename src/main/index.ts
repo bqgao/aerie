@@ -16,6 +16,11 @@ import { migrate, getSessionAgent } from "./db/store";
 import { migrateAnalytics } from "./db/analytics";
 import { createClaudeProvider } from "./provider/claude";
 import { createCodexProvider } from "./provider/codex";
+import { createOpenCodeProvider } from "./provider/opencode";
+import {
+  createServiceDiscovery,
+  resolveOpencodeConfigDir,
+} from "./provider/opencode/service";
 import { createCodexLimitsService } from "./provider/codex/limits";
 import { createCodexThreadMetadataService } from "./provider/codex/thread-metadata";
 import { resolveCodexDir } from "./provider/codex/config";
@@ -378,13 +383,29 @@ app
         codexEntries: () => managed.codexEntries(),
       },
     });
+    // OpenCode's read side is the local v2 background service, not files: discovery (one spawn,
+    // cached; re-discovery on connection errors) rides the same lazy-refresh contract as the other
+    // optional services — resolves ride renderer polls only ("renderer polls; no main timers").
+    const opencodeProvider = createOpenCodeProvider({
+      service: createServiceDiscovery(),
+      fetchFn: net.fetch.bind(net),
+      recentWindowMs,
+      managed: {
+        has: (id) => managed.agentOf(id) === "opencode",
+        cwdOf: (id) => managed.cwdOf(id),
+      },
+    });
     // id → agent: live drafts answer from the registry; indexed rows from the sessions table;
     // anything unknown is claude (the legacy default — never a projects/ sweep for a codex id).
     const agentOf = (id: string): AgentId =>
       managed.agentOf(id) ?? getSessionAgent(db, id) ?? "claude";
     services.agentOf = agentOf;
     const provider = createCompositeProvider(
-      { claude: claudeProvider, codex: codexProvider },
+      {
+        claude: claudeProvider,
+        codex: codexProvider,
+        opencode: opencodeProvider,
+      },
       agentOf,
     );
     services.provider = provider;
@@ -401,7 +422,13 @@ app
       dir: app.getPath("userData"),
     });
     const cliStatus = createCliStatusController({
-      configDirs: { claude: claudeDir, codex: codexDir },
+      configDirs: {
+        claude: claudeDir,
+        codex: codexDir,
+        // opencode's config dir feeds the CLI probe's display row only (its probe asks no auth);
+        // the SERVICE config lives next to it (service.json's password travels via discovery).
+        opencode: resolveOpencodeConfigDir(process.env),
+      },
     });
     services.cliStatus = cliStatus;
     // Warm every agent's verdict in the background; each check is async and the window is already up.
@@ -519,7 +546,10 @@ app
       statuslineLaunchFault,
       caffeinate,
       usage,
-      sessionOverlays: [(sessions) => codexProvider.overlaySessions(sessions)],
+      sessionOverlays: [
+        (sessions) => codexProvider.overlaySessions(sessions),
+        (sessions) => opencodeProvider.overlaySessions(sessions),
+      ],
     });
 
     // One-shot launch check: packaged only, and only when the user hasn't turned it off. Deferred so it

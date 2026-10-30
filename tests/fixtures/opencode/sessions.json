@@ -1,0 +1,250 @@
+{
+  "data": [
+    {
+      "id": "ses_e7465b0c5ffeTlmupzugrPP3cc",
+      "parentID": "ses_e791abb58ffeIDGs2u7KpqxUtv",
+      "projectID": "61d7010bfa95b76c2ce7561b93d9e19fd63801af",
+      "agent": "fixer",
+      "model": {
+        "id": "glm-5.3-flash",
+        "providerID": "opencode-go",
+        "variant": "high"
+      },
+      "cost": 0.017112290000000002,
+      "tokens": {
+        "input": 53099,
+        "output": 763,
+        "reasoning": 657,
+        "cache": {
+          "read": 281248,
+          "write": 0
+        }
+      },
+      "time": {
+        "created": 1793343508284,
+        "updated": 1793343566859
+      },
+      "title": "[redacted session title]",
+      "permissions": [
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "external_directory",
+          "resource": "*",
+          "effect": "ask"
+        },
+        {
+          "action": "read",
+          "resource": "*.env",
+          "effect": "ask"
+        },
+        {
+          "action": "read",
+          "resource": "*.env.*",
+          "effect": "ask"
+        },
+        {
+          "action": "read",
+          "resource": "*.env.example",
+          "effect": "allow"
+        },
+        {
+          "action": "question",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "task_cancel",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "task_message",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "task_reply",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "task_revive",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "task_status",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "acp_run",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "interview_submit_state",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "wait_for_user",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "marketplace_inspect",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "marketplace_manage",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "skill",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "context7_*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "gh_grep_*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "deepwiki_*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "browser",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "task_cancel",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "task_message",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "task_reply",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "task_revive",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "task_status",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "acp_run",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "interview_submit_state",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "wait_for_user",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "marketplace_inspect",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "marketplace_manage",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "skill",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "context7_*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "gh_grep_*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "deepwiki_*",
+          "resource": "*",
+          "effect": "deny"
+        }
+      ],
+      "location": {
+        "directory": "/Users/bqgao"
+      }
+    },
+    {
+      "id": "ses_e791abb58ffeIDGs2u7KpqxUtv",
+      "projectID": "61d7010bfa95b76c2ce7561b93d9e19fd63801af",
+      "agent": "orchestrator",
+      "model": {
+        "id": "GLM-5.3",
+        "providerID": "nanhu",
+        "variant": "high"
+      },
+      "cost": 0,
+      "tokens": {
+        "input": 148103,
+        "output": 12485,
+        "reasoning": 38969,
+        "cache": {
+          "read": 1245440,
+          "write": 0
+        }
+      },
+      "outcome": "succeeded",
+      "time": {
+        "created": 1793264534706,
+        "updated": 1793343542721,
+        "idle": 1793343542724,
+        "viewed": 1793343542724
+      },
+      "title": "[redacted session title]",
+      "location": {
+        "directory": "/Users/bqgao"
+      }
+    }
+  ],
+  "cursor": {
+    "previous": "eyJvcmRlciI6ImRlc2MiLCJhbmNob3IiOnsiaWQiOiJzZXNfZTc0NjViMGM1ZmZlVGxtdXB6dWdyUFAzY2MiLCJ0aW1lIjoxNzkzMzQzNTY2ODU5LCJkaXJlY3Rpb24iOiJwcmV2aW91cyJ9fQ",
+    "next": "eyJvcmRlciI6ImRlc2MiLCJhbmNob3IiOnsiaWQiOiJzZXNfZTc5MWFiYjU4ZmZlSURHczJ1N0twcXhVdHYiLCJ0aW1lIjoxNzkzMzQzNTQyNzIxLCJkaXJlY3Rpb24iOiJuZXh0In19"
+  }
+}

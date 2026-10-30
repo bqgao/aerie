@@ -976,7 +976,17 @@ export function registerIpc({
   const walkCaches: Record<AgentId, WalkCache | null> = {
     claude: null,
     codex: null,
+    // opencode has no translatable file source this pass (its history lives in the service's own
+    // database — the backfill scan is a later pass), so its walk cache stays null forever.
+    opencode: null,
   };
+  /** The agent's stats source dir; null when the agent has none (no scan runs — done serves). */
+  const statsDirFor = (agent: AgentId): string | null =>
+    agent === "claude"
+      ? (claudeDir ?? null)
+      : agent === "codex"
+        ? (codexDir ?? null)
+        : null;
   // Returns the (briefly-cached) target walk plus whether this call did a real disk walk. `fresh` lets the
   // handler avoid settling `done` off a stale cache hit: a session that appeared during a backfill burst is
   // absent from a cached list, so the cached set would drain to done=true while real work remains.
@@ -984,7 +994,7 @@ export function registerIpc({
     agent: AgentId,
     now: number,
   ): { targets: ScanTarget[]; fresh: boolean } => {
-    const dir = agent === "claude" ? claudeDir : codexDir;
+    const dir = statsDirFor(agent);
     if (!dir) return { targets: [], fresh: true };
     const cache = walkCaches[agent];
     const fresh = !cache || now - cache.atMs >= WALK_TTL_MS;
@@ -1004,7 +1014,7 @@ export function registerIpc({
     agent: AgentId,
     now: number,
   ): ScanProgress & { wrote: boolean } => {
-    const dir = agent === "claude" ? claudeDir : codexDir;
+    const dir = statsDirFor(agent);
     if (!analyticsDb || !dir) return { ...doneProgress(), wrote: false };
     try {
       const walk = scanTargets(agent, now);

@@ -39,8 +39,11 @@ export function buildClaudeCommand(opts: {
  * Argv to spawn a fresh Managed session for ANY agent — the one place the per-agent spawn shape
  * lives. Claude pins the session id and takes the model alias (buildClaudeCommand); codex is the
  * bare binary with no args — it has no id-pin flag (correlation happens via rollout claiming, see
- * provider/codex/claim.ts) and models are chosen inside its own TUI. The binary name comes from
- * the AGENTS descriptor, so a future agent adds a branch here without inventing a second registry.
+ * provider/codex/claim.ts) and models are chosen inside its own TUI. opencode pins the session id
+ * too: `--session` CONTINUES or CREATES the id (verified on v2.0.28), so a managed session is a
+ * claude-style deterministic claim — mint-and-pin, no codex-style claim scan; models are chosen
+ * inside its own TUI (no --model wiring). The binary name comes from the AGENTS descriptor, so a
+ * future agent adds a branch here without inventing a second registry.
  */
 export function buildSpawnCommand(opts: {
   agent: AgentId;
@@ -54,7 +57,16 @@ export function buildSpawnCommand(opts: {
       model: opts.model,
       extraArgs: opts.extraArgs,
     });
-  return { file: AGENTS[opts.agent].binary, args: [...(opts.extraArgs ?? [])] };
+  if (opts.agent === "codex")
+    return {
+      file: AGENTS[opts.agent].binary,
+      args: [...(opts.extraArgs ?? [])],
+    };
+  // opencode: pin the minted id up front — the CLI creates the session under it on first write.
+  return {
+    file: AGENTS[opts.agent].binary,
+    args: ["--session", opts.id, ...(opts.extraArgs ?? [])],
+  };
 }
 
 /** Rewrite a Windows shim invocation into a launch form node-pty's ConPTY backend can run. A real `.exe`
@@ -132,10 +144,11 @@ export function toSpawnForm(
 /**
  * Argv to Resume an Ended session under its OWN id, per agent: claude (`claude --resume <id>`)
  * keeps writing the same Transcript at `projects/<cwd-slug>/<id>.jsonl`; codex
- * (`codex resume <id>` — subcommand form, no flags) appends in place to the same rollout file.
- * No `--model` on either: both CLIs restore the session's model themselves, which is the
- * "inherit" in one-click Resume. The binary name comes from the AGENTS descriptor, matching
- * buildSpawnCommand's per-agent dispatch.
+ * (`codex resume <id>` — subcommand form, no flags) appends in place to the same rollout file;
+ * opencode (`opencode --session <id>`) continues the same server-side session — no rollout, the
+ * flag IS the pin (same shape as its spawn, per its verbatim docs). No `--model` on any of them:
+ * each CLI restores the session's model itself, which is the "inherit" in one-click Resume. The
+ * binary name comes from the AGENTS descriptor, matching buildSpawnCommand's per-agent dispatch.
  */
 export function buildResumeCommand(opts: {
   agent: AgentId;
@@ -146,6 +159,11 @@ export function buildResumeCommand(opts: {
     return {
       file: "claude",
       args: ["--resume", opts.id, ...(opts.extraArgs ?? [])],
+    };
+  if (opts.agent === "opencode")
+    return {
+      file: AGENTS.opencode.binary,
+      args: ["--session", opts.id, ...(opts.extraArgs ?? [])],
     };
   return {
     file: AGENTS[opts.agent].binary,

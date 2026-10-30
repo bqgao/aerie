@@ -3,7 +3,7 @@
  *  branch in terminal/command.ts, one probe spec in main/cli-status.ts, one settings card, one
  *  icon in ui/agent-icons.tsx. Every picker/dropdown/menu iterates AGENT_IDS — never a hardcoded
  *  pair — so the surfaces pick a new agent up from here alone. */
-export const AGENT_IDS = ["claude", "codex"] as const;
+export const AGENT_IDS = ["claude", "codex", "opencode"] as const;
 
 export type AgentId = (typeof AGENT_IDS)[number];
 
@@ -93,6 +93,22 @@ export const AGENTS: Record<AgentId, AgentDescriptor> = {
       hasTranscript: true,
       hasTelemetry: true,
       hasRateLimits: true,
+      canResume: true,
+      hasStats: true,
+    },
+  },
+  // opencode: transcript + telemetry (the v2 service API carves usage per session row) + Resume
+  // (`opencode --session <id>` — the CLI pins/continues, so managed spawns mint-and-pin, claude-style).
+  // Activity/subagents/fork/model-picker still gated off; Pass 2 flips more flags as provider readers
+  // land — the surfaces need no edits. hasStatsBreakdowns stays false: no per-model attribution yet.
+  opencode: {
+    id: "opencode",
+    label: "OpenCode",
+    binary: "opencode",
+    capabilities: {
+      ...NONE,
+      hasTranscript: true,
+      hasTelemetry: true,
       canResume: true,
       hasStats: true,
     },

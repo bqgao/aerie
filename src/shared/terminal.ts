@@ -46,8 +46,18 @@ if (FLOW.lowWaterChars < FLOW.ackChars) {
 }
 
 /** A fresh pinned session id (uuid v4) — the id the app correlates to the session's Transcript at
- *  `projects/<cwd-slug>/<id>.jsonl`. Minted in the renderer so its terminal is standing before spawn. */
-export function newSessionId(): string {
+ *  `projects/<cwd-slug>/<id>.jsonl`. Minted in the renderer so its terminal is standing before spawn.
+ *  opencode mints its `ses_` + 24-base62 shape instead — `opencode --session <id>` continues OR
+ *  creates that id (spec'd provenance), so a managed spawn pins a service-shaped id up front. */
+export function newSessionId(agent?: AgentId): string {
+  if (agent === "opencode") {
+    let id = "ses_";
+    const alphabet =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const bytes = crypto.getRandomValues(new Uint8Array(24));
+    for (const b of bytes) id += alphabet[b % 62];
+    return id;
+  }
   return crypto.randomUUID();
 }
 

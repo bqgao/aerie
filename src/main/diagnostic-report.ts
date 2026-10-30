@@ -28,6 +28,9 @@ const KNOWN_ENTRY_TYPES: Record<AgentId, ReadonlySet<string>> = {
     "session_meta",
     "turn_context",
   ]),
+  // opencode: no JSONL line source at all (the v2 API is the transcript) — resolveTranscriptPath
+  // returns null and this scan never runs for it; the empty set keeps the registry exhaustive.
+  opencode: new Set([]),
 };
 
 export interface TranscriptScanData {
