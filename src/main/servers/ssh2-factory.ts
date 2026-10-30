@@ -54,6 +54,11 @@ export function createSshClientFactory(): SshClientFactory {
       end: () => client.end(),
       exec: (command, cb) =>
         client.exec(command, (err, stream) => cb(err, stream ?? null)),
+      // The tunnel leg (Pass R): same retag, the stream is a duplex we only pipe.
+      forwardOut: (srcHost, srcPort, dstHost, dstPort, cb) =>
+        client.forwardOut(srcHost, srcPort, dstHost, dstPort, (err, stream) =>
+          cb(err, stream ?? null),
+        ),
     };
     return rpc;
   };

@@ -6,7 +6,7 @@
  * `any`.
  */
 declare module "ssh2" {
-  import type { Readable } from "node:stream";
+  import type { Duplex, Readable } from "node:stream";
 
   export interface ConnectConfig {
     host: string;
@@ -36,6 +36,15 @@ declare module "ssh2" {
     exec(
       command: string,
       cb: (err: Error | undefined, stream: ExecStream | undefined) => void,
+    ): void;
+    /** The outbound tunnel channel for remote opencode serve (Pass R): a duplex pipe like a TCP
+     *  socket, one per forwarded connection. */
+    forwardOut(
+      srcHost: string,
+      srcPort: number,
+      dstHost: string,
+      dstPort: number,
+      cb: (err: Error | undefined, stream: Duplex | undefined) => void,
     ): void;
     end(): void;
     on(event: "ready", cb: () => void): this;

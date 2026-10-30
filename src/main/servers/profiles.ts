@@ -33,6 +33,29 @@ export interface ServerProfileStoreDeps {
   fs?: ServersFs;
 }
 
+/** Validation for the Pass R opencode section of a profile (present = the profile hosts a serve):
+ *  servePort an integer in range, directUrl an http:// URL when present, autoTunnel a boolean. */
+export function validateOpencodeSection(
+  opencode: ServerProfileInput["opencode"],
+): string | null {
+  if (!opencode) return null;
+  if (
+    !Number.isInteger(opencode.servePort) ||
+    opencode.servePort < 1 ||
+    opencode.servePort > 65535
+  )
+    return "The OpenCode serve port must be between 1 and 65535.";
+  if (
+    opencode.directUrl !== undefined &&
+    (typeof opencode.directUrl !== "string" ||
+      !opencode.directUrl.trim().startsWith("http://"))
+  )
+    return "A direct URL must start with http://.";
+  if (typeof opencode.autoTunnel !== "boolean")
+    return "Auto-tunnel must be on or off.";
+  return null;
+}
+
 /** Validation: name/host/username non-empty, port an integer in range, authMode exercises only the
  *  fields its mode uses (keyPath required for key mode). Returns the first problem or null. */
 export function validateProfileInput(input: ServerProfileInput): string | null {
@@ -55,7 +78,7 @@ export function validateProfileInput(input: ServerProfileInput): string | null {
     (typeof input.keyPath !== "string" || !input.keyPath.trim())
   )
     return "A key path is required for key auth.";
-  return null;
+  return validateOpencodeSection(input.opencode);
 }
 
 /** Mint a profile id: nanoid-style short opaque token, namespaced so diagnostics can tell where an
@@ -132,6 +155,9 @@ export function createServerProfileStore(
         // keyPath is allowed ONLY in key mode — a mode switch away would otherwise leave a stale
         // path pointing at a file the profile no longer reads.
         keyPath: input.authMode === "key" ? trimmedKeyPath : undefined,
+        // The opencode section round-trips verbatim (validated above); the renderer sends the
+        // whole sub-object on every save, so an absent section removes one (removing the tab).
+        opencode: input.opencode,
       };
       const existing = input.id
         ? store.servers.find((p) => p.id === input.id)

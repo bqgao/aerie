@@ -13,11 +13,15 @@ export interface SafeStorageLike {
   decryptString(encrypted: Buffer): string;
 }
 
-/** One profile's decrypted credential pair (never rendered anywhere — the S2/F/R passes hand these
- *  straight to ssh2). A missing both-secrets entry reads as null ("credential missing"). */
+/** One profile's decrypted secret triple (never rendered anywhere — S1 hands password/passphrase
+ *  straight to ssh2, Pass R hands the serve password to its fetch layer and the spawn env). A
+ *  triple with all members absent reads as null ("credential missing"). */
 export interface ServerCredentials {
   password?: string;
   passphrase?: string;
+  /** The remote `opencode serve` password (Pass R) — the Basic auth half for the tunnel-following
+   *  client and the OPENCODE_PASSWORD env of every managed remote spawn. */
+  opencodePassword?: string;
 }
 
 export type CredentialSetResult = { ok: true } | { ok: false; error: string };
@@ -58,6 +62,8 @@ export function createServerCredentialStore(
     password?: string;
     /** base64(safeStorage.encryptString(value)). */
     passphrase?: string;
+    /** base64(safeStorage.encryptString(value)) — the remote opencode serve password (Pass R). */
+    opencodePassword?: string;
   }
 
   function read(): Record<string, Entry> {
@@ -78,9 +84,16 @@ export function createServerCredentialStore(
       const e = (v ?? {}) as Partial<Entry>;
       if (
         (typeof e.password === "string" && e.password.length > 0) ||
-        (typeof e.passphrase === "string" && e.passphrase.length > 0)
+        (typeof e.passphrase === "string" && e.passphrase.length > 0) ||
+        (typeof e.opencodePassword === "string" &&
+          e.opencodePassword.length > 0)
       )
-        out[id] = { v: 1, password: e.password, passphrase: e.passphrase };
+        out[id] = {
+          v: 1,
+          password: e.password,
+          passphrase: e.passphrase,
+          opencodePassword: e.opencodePassword,
+        };
     }
     return out;
   }
@@ -114,10 +127,12 @@ export function createServerCredentialStore(
       if (!entry) return null;
       const password = decrypt(entry.password);
       const passphrase = decrypt(entry.passphrase);
-      if (!password && !passphrase) return null;
+      const opencodePassword = decrypt(entry.opencodePassword);
+      if (!password && !passphrase && !opencodePassword) return null;
       const out: ServerCredentials = {};
       if (password) out.password = password;
       if (passphrase) out.passphrase = passphrase;
+      if (opencodePassword) out.opencodePassword = opencodePassword;
       return out;
     },
     set(id, value) {
@@ -153,7 +168,19 @@ export function createServerCredentialStore(
       } else {
         next.passphrase = encrypt(value.passphrase);
       }
-      if (!next.password && !next.passphrase) delete map[id];
+      if (value.opencodePassword === undefined) {
+        if (prev.opencodePassword)
+          next.opencodePassword = prev.opencodePassword;
+      } else if (
+        value.opencodePassword === null ||
+        value.opencodePassword === ""
+      ) {
+        // cleared — a profile losing its opencode section must not hold a dead secret
+      } else {
+        next.opencodePassword = encrypt(value.opencodePassword);
+      }
+      if (!next.password && !next.passphrase && !next.opencodePassword)
+        delete map[id];
       else map[id] = next;
       return write(map);
     },

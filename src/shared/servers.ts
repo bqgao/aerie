@@ -26,6 +26,27 @@ export interface ServerProfile {
   createdAtMs: number;
   /** When a connection last reached ready (stamped by the connection manager). Absent = never. */
   lastConnectedMs?: number;
+  /** The OpenCode section (Pass R): the profile doubles as a REMOTE opencode serve host —
+   *  `opencode serve --hostname 127.0.0.1 --port servePort` runs there, reached through the
+   *  SSH tunnel (or a directly routable URL). Absent = the profile does not host opencode. */
+  opencode?: {
+    /** The remote port the `opencode serve` instance listens on (tunnel destination). */
+    servePort: number;
+    /** Optional directly-reachable base URL (Tailscale/LAN) — skips the tunnel entirely.
+     *  The tunnel's loopback port is otherwise minted fresh per connection, so NEVER store one. */
+    directUrl?: string;
+    /** Dial the SSH connection ourselves when the app needs the serve (start/on demand). False =
+     *  rely on an already-live connection (the user opened it) or a directUrl. */
+    autoTunnel: boolean;
+  };
+}
+
+/** The opencode half of a server's health (Pass R): the serve's own API probe, separate from the
+ *  SSH leg — a tunnel can be up while the serve is down. Per-server in the status record. */
+export interface OpencodeHealth {
+  state: "ok" | "down";
+  /** When down: the reason (HTTP status / connect error). Never carries credentials. */
+  detail?: string;
 }
 
 /** A create/update as the renderer sends it: the safe fields; main decides identity and keeps
@@ -37,10 +58,13 @@ export type ServerProfileInput = Omit<
 > & { id?: string };
 
 /** Credential material for one profile, sent once at save time. Supports both secret kinds so a
- *  key-mode switch can clear the stale password (empty/missing field = no change; `null` clears). */
+ *  key-mode switch can clear the stale password (empty/missing field = no change; `null` clears).
+ *  The opencode kind (Pass R) holds the REMOTE serve password — the tunnel-proxied client and
+ *  every managed remote spawn's env authenticate with it — same file, same safeStorage rules. */
 export interface ServerCredentialsInput {
   password?: string | null;
   passphrase?: string | null;
+  opencodePassword?: string | null;
 }
 
 /** The failure type every servers call resolves to — handlers never reject (the app-wide IPC
@@ -61,6 +85,10 @@ export interface ServerStatusEntry {
   /** The last dial/connection failure, for the row's inline readout. Cleared on the next attempt
    *  or an explicit disconnect. */
   lastError?: string;
+  /** The serve API's own health (Pass R) — independent of the SSH leg: a live tunnel says nothing
+   *  about the remote `opencode serve` process. Absent when the profile hosts no serve or it has
+   *  never been probed. */
+  opencode?: OpencodeHealth;
 }
 
 /** status(): every saved profile gets an entry (absent id = offline-safe answer anyway, but the

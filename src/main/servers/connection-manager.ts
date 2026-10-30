@@ -8,7 +8,7 @@
  * a fake and run no network. The factory surface (SshClientRpc) mirrors the exact ssh2 Client
  * members used here — the real ssh2 Client satisfies it structurally (see ssh2-factory.ts).
  */
-import type { Readable } from "node:stream";
+import type { Duplex, Readable } from "node:stream";
 import type { ServerProfile, ServerStatusMap } from "@shared/servers";
 import { logWarn } from "../log-buffer";
 
@@ -23,6 +23,15 @@ export interface SshClientRpc {
   exec(
     command: string,
     cb: (err: Error | undefined, stream: Readable | null) => void,
+  ): void;
+  /** Open an outbound channel to the remote `opencode serve` port (the Pass R transport): a
+   *  full-duplex pipe against the local loopback listener (requests up, answers back). */
+  forwardOut(
+    srcHost: string,
+    srcPort: number,
+    dstHost: string,
+    dstPort: number,
+    cb: (err: Error | undefined, stream: Duplex | null) => void,
   ): void;
 }
 
@@ -65,6 +74,10 @@ export interface SshDeps {
   sshFactory: SshClientFactory;
   /** Stamps a successful handshake into the profile registry. */
   onConnected(id: string, atMs: number): void;
+  /** Notified whenever this id stops having ANY live connection: a post-ready drop, a user
+   *  disconnect, or a failed dial (idempotent — transport teardown rides this seam, so a dead
+   *  pooled connection kills its tunnel with it, not just the SSH leg). */
+  onDown?(id: string): void;
   now?: () => number;
   /** key-mode key files. Default: the real fs, reading the key FRESH at every dial — a rotated
    *  key file applies without re-saving the profile. */
@@ -147,6 +160,7 @@ export function createConnectionManager(deps: SshDeps): ConnectionManager {
     if (pool.get(id) !== entry) return; // evicted already (or superseded by a re-dial)
     pool.delete(id);
     lastError.set(id, err ? err.message : "The connection dropped.");
+    deps.onDown?.(id); // transport teardown rides the same evict
   };
 
   /** Auth-material resolution shared by pool-connect and test: plain field checks, one failure
@@ -300,6 +314,7 @@ export function createConnectionManager(deps: SshDeps): ConnectionManager {
             err instanceof Error ? err.message : "Connection failed.";
           lastError.set(id, message);
           for (const f of entry.followers ?? []) f.fail(err as Error);
+          deps.onDown?.(id); // a re-dial refusal also tears whatever older tunnel might exist
           return { ok: false as const, error: message };
         },
       );
@@ -307,6 +322,9 @@ export function createConnectionManager(deps: SshDeps): ConnectionManager {
     disconnect(id) {
       const entry = pool.get(id);
       evict(id);
+      // Notify BEFORE the rpc access: the transport tears down whether or not a live client
+      // ever existed (a rejected dial's tunnel is dead the moment the pool evicts).
+      deps.onDown?.(id);
       if (!entry?.rpc) return;
       // Flag BEFORE end(): the 'close' ssh2 then fires must read as user-initiated offline,
       // not as a remote drop (markDown checks the flag through its closure).
