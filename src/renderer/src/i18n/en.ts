@@ -113,6 +113,17 @@ export const en = {
       keyPath: "Key path",
       password: "Password",
       passphrase: "Passphrase",
+      // Pass R: the per-row serve lamp — ok/down/unknown, distinct from the SSH lamp.
+      opencode: {
+        enable: "Hosts an OpenCode serve",
+        servePort: "Serve port",
+        directUrl: "Direct URL (optional, skip tunnel)",
+        autoTunnel: "Open the tunnel on demand",
+        password: "Serve password",
+        ok: "SERVE OK",
+        down: "SERVE DOWN",
+        unknown: "SERVE UNPROBED",
+      },
       // Credential inputs are write-only: the field starts blank with this placeholder once a
       // secret is stored (the value is never round-tripped back to the renderer).
       credentialSet: "saved — type to replace, empty keeps",
@@ -293,6 +304,9 @@ export const en = {
     },
     sessionRow: {
       openSession: (title: string) => `Open ${title}`,
+      // Pass R: the remote-row server badge tooltip — name first, host after the dot.
+      serverBadge: (name: string, host: string) =>
+        host ? `Remote server ${name} · ${host}` : `Remote server ${name}`,
       sessionActions: "Session actions",
       expandSubagents: (count: number) =>
         `Expand ${count} ${count === 1 ? "subagent" : "subagents"}`,

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type {
+  OpencodeHealth,
   ServerProfile,
   ServerStatus,
   ServerStatusMap,
@@ -38,6 +39,30 @@ function StatusDot({ status }: { status: ServerStatus }) {
   );
 }
 
+/** The serve (opencode) leg's lamp + terse word — teal live, red down, slate unprobed. Labeled
+ *  separately from the SSH lamp so the two state dots on one row read as distinct subsystems. */
+function ServeLamp({ health }: { health: OpencodeHealth | undefined }) {
+  const { t } = useI18n();
+  const state = health?.state ?? "unknown";
+  const color =
+    state === "ok"
+      ? "h-2 w-2 rounded-full bg-working shadow-[0_0_0.375rem_rgba(45,212,191,0.5)]"
+      : state === "down"
+        ? "h-2 w-2 rounded-full bg-danger"
+        : "h-2 w-2 rounded-full bg-ink-600";
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 align-middle"
+      title={state === "down" ? health?.detail : undefined}
+    >
+      <span className={color} />
+      <span className="font-mono text-meta text-fg-faint">
+        {t.settings.servers.opencode[state]}
+      </span>
+    </span>
+  );
+}
+
 /** The form draft: save fields plus the WRITE-ONLY credential inputs, kept out of the profile
  *  type so the saved profile can never grow a plaintext field by accident. Credential inputs
  *  always start blank — secrets are never round-tripped (the placeholder says what's stored). */
@@ -52,6 +77,12 @@ interface ServerForm {
   keyPath: string;
   password: string;
   passphrase: string;
+  /** Pass R: the OpenCode subsection (the profile doubles as a remote serve host). */
+  hasOpencode: boolean;
+  ocServePort: string;
+  ocDirectUrl: string;
+  ocAutoTunnel: boolean;
+  ocPassword: string;
 }
 
 const EMPTY_FORM = (port: string): ServerForm => ({
@@ -64,6 +95,11 @@ const EMPTY_FORM = (port: string): ServerForm => ({
   keyPath: "",
   password: "",
   passphrase: "",
+  hasOpencode: false,
+  ocServePort: "4096",
+  ocDirectUrl: "",
+  ocAutoTunnel: true,
+  ocPassword: "",
 });
 
 function formOf(p: ServerProfile): ServerForm {
@@ -78,6 +114,11 @@ function formOf(p: ServerProfile): ServerForm {
     keyPath: p.keyPath ?? "",
     password: "",
     passphrase: "",
+    hasOpencode: !!p.opencode,
+    ocServePort: String(p.opencode?.servePort ?? 4096),
+    ocDirectUrl: p.opencode?.directUrl ?? "",
+    ocAutoTunnel: p.opencode?.autoTunnel ?? true,
+    ocPassword: "",
   };
 }
 
@@ -156,10 +197,18 @@ export function ServerCard() {
       return;
     }
     // The credential inputs ride a second call: undefined keys = untouched; a typed value replaces.
-    if (form.password !== "" || form.passphrase !== "") {
+    if (
+      form.password !== "" ||
+      form.passphrase !== "" ||
+      form.ocPassword !== ""
+    ) {
       const result = await window.api.serversSetCredential(saved.profile.id, {
         ...(form.password !== "" ? { password: form.password } : {}),
         ...(form.passphrase !== "" ? { passphrase: form.passphrase } : {}),
+        // Pass R: the serve password is write-only exactly like the SSH kinds.
+        ...(form.ocPassword !== ""
+          ? { opencodePassword: form.ocPassword }
+          : {}),
       });
       if (!result.ok)
         setFormError(`${t.settings.servers.credFail(result.error)}`);
@@ -262,6 +311,9 @@ export function ServerCard() {
                   </span>
                 )}
                 <StatusDot status={st} />
+                {/* Pass R: a second lamp when the profile hosts a serve — SSH leg vs serve leg,
+                 *  each labeled so the two dots can't blur together. */}
+                {p.opencode && <ServeLamp health={entry?.opencode} />}
               </span>
             }
             warn={
@@ -413,6 +465,67 @@ export function ServerCard() {
                   placeholder={t.settings.servers.credentialSet}
                 />
               </Labeled>
+            )}
+            {/* ── Pass R: the OpenCode subsection ── */}
+            <label className="flex items-center gap-2 text-aux text-fg-muted">
+              <input
+                type="checkbox"
+                className="size-3.5 accent-(--ui-accent)"
+                checked={form.hasOpencode}
+                onChange={(e) =>
+                  setForm({ ...form, hasOpencode: e.target.checked })
+                }
+              />
+              {t.settings.servers.opencode.enable}
+            </label>
+            {form.hasOpencode && (
+              <>
+                <Labeled label={t.settings.servers.opencode.servePort}>
+                  <input
+                    className={inputClass}
+                    value={form.ocServePort}
+                    inputMode="numeric"
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        ocServePort: e.target.value.replace(/\D/g, ""),
+                      })
+                    }
+                  />
+                </Labeled>
+                <Labeled label={t.settings.servers.opencode.directUrl}>
+                  <input
+                    className={inputClass}
+                    value={form.ocDirectUrl}
+                    onChange={(e) =>
+                      setForm({ ...form, ocDirectUrl: e.target.value })
+                    }
+                    placeholder="http://tailnet-host:4096"
+                  />
+                </Labeled>
+                <label className="flex items-center gap-2 text-aux text-fg-muted">
+                  <input
+                    type="checkbox"
+                    className="size-3.5 accent-(--ui-accent)"
+                    checked={form.ocAutoTunnel}
+                    onChange={(e) =>
+                      setForm({ ...form, ocAutoTunnel: e.target.checked })
+                    }
+                  />
+                  {t.settings.servers.opencode.autoTunnel}
+                </label>
+                <Labeled label={t.settings.servers.opencode.password}>
+                  <input
+                    className={inputClass}
+                    type="password"
+                    value={form.ocPassword}
+                    onChange={(e) =>
+                      setForm({ ...form, ocPassword: e.target.value })
+                    }
+                    placeholder={t.settings.servers.credentialSet}
+                  />
+                </Labeled>
+              </>
             )}
           </div>
           {formError && (

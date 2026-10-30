@@ -94,6 +94,17 @@ export const zh: Translations = {
       keyPath: "密钥路径",
       password: "密码",
       passphrase: "密钥口令",
+      // Pass R: the per-row serve lamp — ok/down/unknown, distinct from the SSH lamp.
+      opencode: {
+        enable: "托管 OpenCode serve",
+        servePort: "服务端口",
+        directUrl: "直连地址（可选，跳过隧道）",
+        autoTunnel: "按需开启隧道",
+        password: "服务密码",
+        ok: "服务正常",
+        down: "服务不可用",
+        unknown: "服务未探测",
+      },
       // Credential inputs are write-only: the field starts blank with this placeholder once a
       // secret is stored (the value is never round-tripped back to the renderer).
       credentialSet: "已保存 — 输入以替换，留空则保留",
@@ -257,6 +268,9 @@ export const zh: Translations = {
       activeSessions: (count) => `${count} 个进行中的会话`,
     },
     sessionRow: {
+      // Pass R: the remote-row server badge tooltip — name first, host after the dot.
+      serverBadge: (name, host) =>
+        host ? `远程服务器 ${name} · ${host}` : `远程服务器 ${name}`,
       openSession: (title) => `打开 ${title}`,
       sessionActions: "会话操作",
       expandSubagents: (count) => `展开 ${count} 个子代理`,

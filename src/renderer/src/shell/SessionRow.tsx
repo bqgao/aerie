@@ -4,8 +4,23 @@ import { cx, Lamp } from "../ui/atoms";
 import { Icon } from "../ui/icons";
 import { AgentIcon } from "../ui/agent-icons";
 import { useI18n } from "../i18n";
+import { useEffect, useState } from "react";
 import { useSessionMenu } from "./use-session-menu";
 import { SessionMenuDropdown } from "./SessionMenuDropdown";
+/** Pass R: server names for remote session badges, fetched ONCE per renderer session (the rail's
+ *  rows all share the module cache). serverId → { name, host }; a failed read still yields an
+ *  empty map, and the badge falls back to the bare id — a rail render must never reject. */
+let $serverNames:
+  | Promise<Map<string, { name: string; host: string }>>
+  | undefined;
+const serverNames = (): Promise<Map<string, { name: string; host: string }>> =>
+  ($serverNames ??= window.api
+    .serversList()
+    .then(
+      (list) =>
+        new Map(list.map((p) => [p.id, { name: p.name, host: p.host }])),
+    )
+    .catch(() => new Map()));
 
 /**
  * The hermes single-line sidebar row: a 26px-tall strip with a state `Lamp` and the title. A
@@ -53,6 +68,26 @@ export function SessionRow({
   onToggleChildren?: () => void;
 }) {
   const { t } = useI18n();
+  // Pass R: the server badge for remote opencode sessions — the id's namespace is the server key;
+  // the labels resolve from the one-shot servers-list cache (modeled on the worktree hint above).
+  const remoteServerId = session.id.includes(":")
+    ? session.id.slice(0, session.id.indexOf(":"))
+    : null;
+  const [serverMeta, setServerMeta] = useState<{
+    name?: string;
+    host?: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!remoteServerId) return;
+    let alive = true;
+    void serverNames().then((map) => {
+      const meta = map.get(remoteServerId);
+      if (alive && meta) setServerMeta(meta);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [remoteServerId]);
   const menu = useSessionMenu(session, canSpawn, {
     onResume,
     onFork,
@@ -164,6 +199,19 @@ export function SessionRow({
           >
             <Icon name="worktree" size={10} className="shrink-0" />
             <span className="truncate">{session.worktree.name}</span>
+          </span>
+        )}
+        {!hasChildren && remoteServerId && (
+          <span
+            className="group-hover:hidden group-has-[:focus-visible]:hidden shrink-0"
+            title={t.shell.sessionRow.serverBadge(
+              serverMeta?.name ?? remoteServerId,
+              serverMeta?.host ?? "",
+            )}
+          >
+            <span className="rounded border border-(--ui-stroke-secondary) px-1 text-[0.68rem] leading-[1.2rem] text-(--ui-text-quaternary)">
+              {serverMeta?.name ?? remoteServerId}
+            </span>
           </span>
         )}
       </button>
