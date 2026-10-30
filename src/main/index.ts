@@ -4,9 +4,14 @@ import {
   nativeTheme,
   net,
   powerSaveBlocker,
+  safeStorage,
   shell,
 } from "electron";
 import { applyLegacyDockIconIfNeeded } from "./dock-icon";
+import { createServerProfileStore } from "./servers/profiles";
+import { createServerCredentialStore } from "./servers/credentials";
+import { createConnectionManager } from "./servers/connection-manager";
+import { createSshClientFactory } from "./servers/ssh2-factory";
 import { isHttpUrl } from "./open-external";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -261,6 +266,22 @@ app
     // correctedPath/shellTermEnv closure above and the setTimeout'd CLI check below.
     // Per-session custom launch args: written by the spawn handler, read back on resume/fork.
     const launchArgs = createLaunchArgsStore({ dir: app.getPath("userData") });
+    // ── Settings → Servers ────────────────────────────────────────────────────────────────
+    // Created here, inside whenReady, because safeStorage is only usable after the ready event —
+    // the credential store's constructor runs at first use, never at import (app-ready rule).
+    const serverProfiles = createServerProfileStore({
+      dir: app.getPath("userData"),
+    });
+    const serverCredentials = createServerCredentialStore({
+      dir: app.getPath("userData"),
+      safeStorage, // the electron module member — this file's only safeStorage reach
+    });
+    const connectionManager = createConnectionManager({
+      profileOf: (id) => serverProfiles.list().find((p) => p.id === id),
+      credentialsOf: (id) => serverCredentials.get(id),
+      sshFactory: createSshClientFactory(),
+      onConnected: (id, atMs) => serverProfiles.setLastConnected(id, atMs),
+    });
     const openWindow = (): void =>
       createWindow(
         managed,
@@ -537,6 +558,9 @@ app
       cliStatus,
       managed,
       sessionTitles,
+      serverProfiles,
+      serverCredentials,
+      connectionManager,
       sessionPins,
       launchPresets,
       projectState,

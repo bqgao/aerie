@@ -26,6 +26,17 @@ import type { AgentId } from "./agents";
 import type { UpdateState } from "./update";
 import type { StatuslineStatus } from "./statusline-status";
 import type { Locale } from "./locale";
+import type {
+  ServerConnectResult,
+  ServerCredentialsInput,
+  ServerProfile,
+  ServerProfileInput,
+  ServerSaveResult,
+  ServerSetCredentialResult,
+  ServerStatusMap,
+  ServerTestInput,
+  ServerTestResult,
+} from "./servers";
 import type { LaunchPresets } from "./extra-args";
 import type {
   DiagnosticReportResult,
@@ -79,6 +90,14 @@ export const IPC = {
   statuslineRepair: "statusline:repair",
   caffeinateGet: "caffeinate:get",
   caffeinateSet: "caffeinate:set",
+  serversList: "servers:list",
+  serversSave: "servers:save",
+  serversRemove: "servers:remove",
+  serversSetCredential: "servers:setCredential",
+  serversConnect: "servers:connect",
+  serversDisconnect: "servers:disconnect",
+  serversStatus: "servers:status",
+  serversTest: "servers:test",
   launchPresetsGet: "launchPresets:get",
   launchPresetsSet: "launchPresets:set",
   /** PUSH: main -> renderer on every update-state transition. */
@@ -346,6 +365,30 @@ export interface IpcApi {
   /** Turn keep-awake on or off. Resolves to the resulting state — main is the source of truth,
    *  so the footer renders the response rather than assuming the toggle took. */
   setCaffeinate(on: boolean): Promise<boolean>;
+  /** Settings → Servers. All servers calls follow the app's never-rejects handler rule; save/
+   *  credential/connect failures carry their reason in the result instead of a throw. */
+  /** Every saved profile (the safe half — no credential material ever). */
+  serversList(): Promise<ServerProfile[]>;
+  /** Create or update; unknown fields in the input are tolerated, invalid ones fail in the result. */
+  serversSave(input: ServerProfileInput): Promise<ServerSaveResult>;
+  /** Delete a profile AND its stored credentials. reportable-noop for an unknown id. */
+  serversRemove(id: string): Promise<void>;
+  /** Store (or clear, null) one profile's password/passphrase. Encrypted with safeStorage;
+   *  nothing about the value comes back. */
+  serversSetCredential(
+    id: string,
+    value: ServerCredentialsInput,
+  ): Promise<ServerSetCredentialResult>;
+  /** Open (pool) the connection for one saved profile. Absent-credential/cfg failures report in
+   *  the result; SUCCESS is reflected in the next status() poll. */
+  serversConnect(id: string): Promise<ServerConnectResult>;
+  /** Tear down one live connection (or a running dial). */
+  serversDisconnect(id: string): Promise<void>;
+  /** The pool's per-profile status + lastError map, keyed by saved profile id. POLLED while the
+   *  Servers card is open — no push channels (app rule). */
+  serversStatus(): Promise<ServerStatusMap>;
+  /** Dial once with raw form values (works on an UNSAVED form), exec `echo ok`, close. */
+  serversTest(input: ServerTestInput): Promise<ServerTestResult>;
 }
 
 /** Everything exposed on `window.api`: the request/response surface plus the Managed-terminal surface. */

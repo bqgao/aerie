@@ -18,6 +18,20 @@ import {
   type UpdateState,
   type DbInfo,
 } from "@shared/ipc";
+import type {
+  ServerConnectResult,
+  ServerCredentialsInput,
+  ServerProfile,
+  ServerProfileInput,
+  ServerSaveResult,
+  ServerSetCredentialResult,
+  ServerStatusMap,
+  ServerTestInput,
+  ServerTestResult,
+} from "@shared/servers";
+import type { ConnectionManager } from "./servers/connection-manager";
+import type { ServerCredentialStore } from "./servers/credentials";
+import type { ServerProfileStore } from "./servers/profiles";
 import { normalizeLocale, type Locale } from "@shared/locale";
 import type { Session } from "@shared/types";
 import type { Provider } from "./provider/types";
@@ -116,6 +130,79 @@ import type {
 } from "@shared/diagnostic-report";
 import type { ManagedRegistry } from "./managed-registry";
 import { AGENT_PROBES } from "./cli-status";
+import { asRecord } from "./provider/codex/rollout";
+
+/* ── Servers IPC input guards ──────────────────────────────────────────────────────────────────
+ * The renderer could send anything (it's the trusted side in Electron, but the module boundary
+ * stays honest the same way every other handler re-shapes over `unknown`). Each normalizer
+ * returns either a ready value or the first validation problem, as a plain string the card shows
+ * verbatim; credential fields are filtered OUT of the normalizers' outputs — profiles and test
+ * inputs carry no secret, and the setCredential call is the only one that touches one. */
+
+const str = (v: unknown): string | undefined =>
+  typeof v === "string" ? v : undefined;
+const numOrNull = (v: unknown): number | undefined =>
+  typeof v === "number" && Number.isFinite(v) ? v : undefined;
+const AUTH_MODES = ["password", "key", "agent"] as const;
+
+export function normalizeProfileInput(
+  raw: unknown,
+): { ok: true; value: ServerProfileInput } | { ok: false; error: string } {
+  const r = asRecord(raw);
+  if (!r) return { ok: false, error: "Malformed server profile." };
+  const authMode = r.authMode as ServerProfile["authMode"];
+  if (!AUTH_MODES.includes(authMode))
+    return { ok: false, error: "Auth mode must be password, key, or agent." };
+  return {
+    ok: true,
+    value: {
+      id: str(r.id),
+      name: str(r.name) ?? "",
+      group: str(r.group) ?? "",
+      host: str(r.host) ?? "",
+      port: numOrNull(r.port) ?? 22,
+      username: str(r.username) ?? "",
+      authMode,
+      keyPath: str(r.keyPath),
+    },
+  };
+}
+
+export function normalizeCredentialInput(
+  raw: unknown,
+): { ok: true; value: ServerCredentialsInput } | { ok: false; error: string } {
+  const r = asRecord(raw);
+  if (!r) return { ok: true, value: {} }; // absent object = "leave both kinds untouched"
+  const kind = (v: unknown): string | null | undefined =>
+    v === null ? null : typeof v === "string" ? v : undefined;
+  return {
+    ok: true,
+    value: { password: kind(r.password), passphrase: kind(r.passphrase) },
+  };
+}
+
+export function normalizeTestInput(
+  raw: unknown,
+): { ok: true; value: ServerTestInput } | { ok: false; error: string } {
+  const r = asRecord(raw);
+  if (!r) return { ok: false, error: "Missing connection values." };
+  const authMode = r.authMode as ServerProfile["authMode"];
+  if (!AUTH_MODES.includes(authMode))
+    return { ok: false, error: "Auth mode must be password, key, or agent." };
+  return {
+    ok: true,
+    value: {
+      id: str(r.id),
+      host: str(r.host) ?? "",
+      port: numOrNull(r.port) ?? 22,
+      username: str(r.username) ?? "",
+      authMode,
+      keyPath: str(r.keyPath),
+      password: str(r.password),
+      passphrase: str(r.passphrase),
+    },
+  };
+}
 
 export interface IpcDeps {
   db: SqliteDb;
@@ -180,6 +267,12 @@ export interface IpcDeps {
   /** Per-agent session overlays applied in overviewNow after the claude statusline overlay —
    *  the generic seam a provider uses to attach non-persisted fields (codex telemetry today). */
   sessionOverlays?: Array<(sessions: Session[]) => Session[]>;
+  /** The SSH server-profile registry + credential store + connection pool (Settings → Servers).
+   *  Optional like every other optional service; dev harnesses that don't wire it still get
+   *  well-formed responses. */
+  serverProfiles?: ServerProfileStore;
+  serverCredentials?: ServerCredentialStore;
+  connectionManager?: ConnectionManager;
 }
 
 export function attachCliStatus<T extends object>(
@@ -219,6 +312,9 @@ export function registerIpc({
   caffeinate,
   usage,
   sessionOverlays,
+  serverProfiles,
+  serverCredentials,
+  connectionManager,
 }: IpcDeps): { sync: () => Promise<void> } {
   const reader: StatusLineReader = statusLine ?? { read: () => [] };
   const readEmail = accountEmail ?? ((): string | null => null);
@@ -1186,6 +1282,76 @@ export function registerIpc({
       return null;
     }
   });
+
+  // ── Settings → Servers ──────────────────────────────────────────────────────────────────────
+  // The SSH server-profile surface. Every handler follows the app-wide rule: never reject, carry
+  // failures in the result. Credential values never echo — only ok/error verdicts do.
+  ipcMain.handle(IPC.serversList, (): ServerProfile[] =>
+    serverProfiles ? serverProfiles.list() : [],
+  );
+  ipcMain.handle(
+    IPC.serversSave,
+    (_e, rawInput?: unknown): ServerSaveResult => {
+      if (!serverProfiles) return { ok: false, error: "Not wired." };
+      // The renderer sends one profile of fields (possibly id-less for create). main re-shapes
+      // rather than trusting: validate describes the FIRST problem the form should fix.
+      const input = normalizeProfileInput(rawInput);
+      if (!input.ok) return { ok: false, error: input.error };
+      return serverProfiles.save(input.value);
+    },
+  );
+  ipcMain.handle(IPC.serversRemove, (_e, id: string): void => {
+    if (!serverProfiles) return;
+    serverProfiles.remove(id);
+    serverCredentials?.remove(id);
+  });
+  ipcMain.handle(
+    IPC.serversSetCredential,
+    (_e, id: string, rawValue?: unknown): ServerSetCredentialResult => {
+      if (!serverCredentials) return { ok: false, error: "Not wired." };
+      if (typeof id !== "string" || id.length === 0)
+        return { ok: false, error: "Unknown profile." };
+      const value = normalizeCredentialInput(rawValue);
+      if (!value.ok) return { ok: false, error: value.error };
+      return serverCredentials.set(id, value.value);
+    },
+  );
+  ipcMain.handle(
+    IPC.serversConnect,
+    async (_e, id: string): Promise<ServerConnectResult> => {
+      if (!connectionManager) return { ok: false, error: "Not wired." };
+      if (typeof id !== "string" || id.length === 0)
+        return { ok: false, error: "Unknown profile." };
+      return connectionManager.connect(id);
+    },
+  );
+  ipcMain.handle(IPC.serversDisconnect, (_e, id: string): void => {
+    if (typeof id === "string") connectionManager?.disconnect(id);
+  });
+  ipcMain.handle(
+    IPC.serversStatus,
+    (): ServerStatusMap =>
+      connectionManager ? connectionManager.status() : {},
+  );
+  ipcMain.handle(
+    IPC.serversTest,
+    async (_e, rawInput?: unknown): Promise<ServerTestResult> => {
+      if (!connectionManager) return { ok: false, error: "Not wired." };
+      const input = normalizeTestInput(rawInput);
+      if (!input.ok) return { ok: false, error: input.error };
+      const value = input.value;
+      // A saved-row test carries no secrets (the renderer must never pull them): main samples
+      // the stored credential for that profile and fills the missing kinds in. `test()` still
+      // takes raw values (the spec's unsaved-form contract) — this is just who owns them.
+      if (value.id && serverCredentials) {
+        const stored = serverCredentials.get(value.id);
+        if (value.password === undefined) value.password = stored?.password;
+        if (value.passphrase === undefined)
+          value.passphrase = stored?.passphrase;
+      }
+      return connectionManager.test(value);
+    },
+  );
 
   return { sync };
 }

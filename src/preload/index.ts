@@ -77,6 +77,17 @@ const api: AppApi = {
   repairStatusline: () => ipcRenderer.invoke(IPC.statuslineRepair),
   getCaffeinate: () => ipcRenderer.invoke(IPC.caffeinateGet),
   setCaffeinate: (on) => ipcRenderer.invoke(IPC.caffeinateSet, on),
+  // Settings → Servers. No credential value ever crosses back — save/credential calls return
+  // verdicts only, and list() carries the profile fields, never stored secrets.
+  serversList: () => ipcRenderer.invoke(IPC.serversList),
+  serversSave: (input) => ipcRenderer.invoke(IPC.serversSave, input),
+  serversRemove: (id) => ipcRenderer.invoke(IPC.serversRemove, id),
+  serversSetCredential: (id, value) =>
+    ipcRenderer.invoke(IPC.serversSetCredential, id, value),
+  serversConnect: (id) => ipcRenderer.invoke(IPC.serversConnect, id),
+  serversDisconnect: (id) => ipcRenderer.invoke(IPC.serversDisconnect, id),
+  serversStatus: () => ipcRenderer.invoke(IPC.serversStatus),
+  serversTest: (input) => ipcRenderer.invoke(IPC.serversTest, input),
   readSubagentTranscript: async (id, agentId, sinceMtimeMs) =>
     fromTranscriptWire(
       (await ipcRenderer.invoke(
