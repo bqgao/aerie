@@ -7,6 +7,7 @@ import { SoftwareUpdateCard, type UpdateControls } from "./SoftwareUpdateCard";
 import { AppearanceCard } from "./AppearanceCard";
 import { CliCard } from "./CliCard";
 import { AgentCliCard } from "./AgentCliCard";
+import { ServerCard } from "./ServerCard";
 import { StatuslineCard } from "./StatuslineCard";
 import { AnalyticsDbCard } from "./AnalyticsDbCard";
 import { IndexDbCard } from "./IndexDbCard";
@@ -189,6 +190,9 @@ function SystemSection({
           )}
         </div>
       ))}
+      {/* The Servers card sits BELOW the per-agent rows: it's a machine registry, not a subsystem
+       *  of any one agent, and the spec keeps it out of the agent loop. */}
+      <ServerCard />
     </>
   );
 }
