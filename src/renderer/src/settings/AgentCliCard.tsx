@@ -19,17 +19,30 @@ const TONE: Record<ReturnType<typeof footerView>["dot"], LampTone> = {
   idle: "idle",
 };
 
-/** The Codex CLI subsystem card: same anatomy as the Claude card (state rail, readouts, fault
- *  band), with codex-sized remedies — an install command and a login pointer, no tab set and no
- *  version floor. Probes run through the same login-shell/PATHEXT spawn form (main/cli-check.ts). */
-export function CodexCliCard({
+/** The non-Claude agents' CLI subsystem card — one anatomy shared by every agent whose probe has
+ *  no version floor remedies beyond "not detected": the Claude card's state rail/format with an
+ *  agent-sized remedy band (install + docs link, no tab set) and no version floor text. Probes run
+ *  through the same login-shell/PATHEXT spawn form (main/cli-check.ts); the agent-specific bits
+ *  (card title, docs label/href) ride in as props so codex/opencode stay in one component. */
+export function AgentCliCard({
+  title,
   status,
   checking,
   onRecheck,
+  notDetectedHeadline,
+  docsHref,
+  docsLabel,
+  configFallback,
 }: {
+  title: string;
   status: CliStatus | null;
   checking: boolean;
   onRecheck: () => void;
+  notDetectedHeadline: string;
+  docsHref: string;
+  docsLabel: string;
+  /** The Config row's fallback when no probe verdict has landed yet. */
+  configFallback: string;
 }) {
   const { t } = useI18n();
   const word =
@@ -39,7 +52,7 @@ export function CodexCliCard({
         ? t.settings.cli.stateReady
         : t.settings.cli.stateFault;
   return (
-    <Card title={t.settings.codexCli.title}>
+    <Card title={title}>
       <SubsystemHeader
         tone={TONE[footerView(status).dot]}
         word={word}
@@ -58,11 +71,8 @@ export function CodexCliCard({
         }
       />
       {status && status.kind !== "ready" && (
-        <FaultBand headline={t.settings.codexCli.notInstalledHeadline}>
-          <DocsLink
-            href="https://developers.openai.com/codex/cli"
-            label={t.settings.codexCli.docs}
-          />
+        <FaultBand headline={notDetectedHeadline}>
+          <DocsLink href={docsHref} label={docsLabel} />
         </FaultBand>
       )}
       <ReadoutRow
@@ -73,7 +83,7 @@ export function CodexCliCard({
       />
       <ReadoutRow
         label={t.settings.cli.config}
-        value={status?.configDir.active ?? "~/.codex"}
+        value={status?.configDir.active ?? configFallback}
       />
     </Card>
   );

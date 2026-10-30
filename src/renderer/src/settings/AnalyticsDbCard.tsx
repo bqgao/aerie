@@ -36,12 +36,18 @@ const TURN_COLUMNS = [
 
 function countValue(
   counts: AgentCounts,
-  render: (total: string, claude: string, codex: string) => string,
+  render: (
+    total: string,
+    claude: string,
+    codex: string,
+    opencode: string,
+  ) => string,
 ): string {
   return render(
     counts.total.toLocaleString("en-US"),
     counts.byAgent.claude.toLocaleString("en-US"),
     counts.byAgent.codex.toLocaleString("en-US"),
+    counts.byAgent.opencode.toLocaleString("en-US"),
   );
 }
 

@@ -16,7 +16,11 @@ import type { AgentId } from "@shared/agents";
  *  Adding an agent = one glyph component + one AGENT_GLYPHS entry, using that agent's own
  *  lobe-icons asset — the "Color" variant verbatim if its silhouette matches every other icon
  *  here (a flat brand fill, like Claude), or the "Mono" shape recolored with the "Color"
- *  variant's fill/gradient if the official Color asset carries a badge/backdrop (like Codex). */
+ *  variant's fill/gradient if the official Color asset carries a badge/backdrop (like Codex).
+ *  OpenCode ships NO color mark — its brand mark is monochrome by design (lobe-icons' Mono variant,
+ *  served with fill="currentColor"; opencode.ai renders it black-on-white / white-on-black), so the
+ *  vendored form here is that Mono path verbatim, tinting with text color like every lucide glyph.
+ *  The two-subpath evenodd box-in-box draws as the hollow frame ring. */
 
 function ClaudeMark({ size, className }: { size: number; className?: string }) {
   return (
@@ -68,12 +72,35 @@ function CodexMark({ size, className }: { size: number; className?: string }) {
   );
 }
 
+function OpenCodeMark({
+  size,
+  className,
+}: {
+  size: number;
+  className?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      fillRule="evenodd"
+      className={className}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M16 6H8v12h8V6zm4 16H4V2h16v20z" />
+    </svg>
+  );
+}
+
 const AGENT_GLYPHS: Record<
   AgentId,
   (p: { size: number; className?: string }) => React.JSX.Element
 > = {
   claude: ClaudeMark,
   codex: CodexMark,
+  opencode: OpenCodeMark,
 };
 
 /** The agent's official brand mark at glyph scale, sized like lucide's Icon — fixed brand color

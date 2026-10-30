@@ -77,6 +77,7 @@ export function IndexDbCard({ info }: { info: IndexDbInfo | null }) {
                 info.sessions.total.toLocaleString("en-US"),
                 info.sessions.byAgent.claude.toLocaleString("en-US"),
                 info.sessions.byAgent.codex.toLocaleString("en-US"),
+                info.sessions.byAgent.opencode.toLocaleString("en-US"),
               )
             : "—"
         }

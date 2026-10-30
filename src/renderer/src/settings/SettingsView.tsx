@@ -6,7 +6,7 @@ import { isUpdatePending } from "@shared/update";
 import { SoftwareUpdateCard, type UpdateControls } from "./SoftwareUpdateCard";
 import { AppearanceCard } from "./AppearanceCard";
 import { CliCard } from "./CliCard";
-import { CodexCliCard } from "./CodexCliCard";
+import { AgentCliCard } from "./AgentCliCard";
 import { StatuslineCard } from "./StatuslineCard";
 import { AnalyticsDbCard } from "./AnalyticsDbCard";
 import { IndexDbCard } from "./IndexDbCard";
@@ -164,11 +164,27 @@ function SystemSection({
               />
               <StatuslineCard />
             </>
-          ) : (
-            <CodexCliCard
+          ) : id === "codex" ? (
+            <AgentCliCard
+              title={t.settings.codexCli.title}
               status={cliStatus.codex ?? null}
               checking={checking === "codex"}
               onRecheck={() => onRecheck("codex")}
+              notDetectedHeadline={t.settings.codexCli.notInstalledHeadline}
+              docsHref="https://developers.openai.com/codex/cli"
+              docsLabel={t.settings.codexCli.docs}
+              configFallback="~/.codex"
+            />
+          ) : (
+            <AgentCliCard
+              title={t.settings.opencodeCli.title}
+              status={cliStatus.opencode ?? null}
+              checking={checking === "opencode"}
+              onRecheck={() => onRecheck("opencode")}
+              notDetectedHeadline={t.settings.opencodeCli.notInstalledHeadline}
+              docsHref={t.settings.opencodeCli.docsHref}
+              docsLabel={t.settings.opencodeCli.docs}
+              configFallback="~/.config/opencode"
             />
           )}
         </div>

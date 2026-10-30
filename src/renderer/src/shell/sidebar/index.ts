@@ -5,6 +5,7 @@ import type { MetricsState } from "../../workspace/use-metrics";
 import type { DocState } from "../../workspace/use-transcript";
 import { ClaudePanels } from "./ClaudePanels";
 import { CodexPanels } from "./CodexPanels";
+import { OpenCodePanels } from "./OpenCodePanels";
 
 /** Everything a per-agent panel stack may draw from. RightSidebar owns the polls and passes the
  *  same props to every composition; each composition forwards only what its agent's panels use
@@ -23,4 +24,5 @@ export interface SidebarPanelsProps {
 export const SIDEBAR_PANELS: Record<AgentId, FC<SidebarPanelsProps>> = {
   claude: ClaudePanels,
   codex: CodexPanels,
+  opencode: OpenCodePanels,
 };

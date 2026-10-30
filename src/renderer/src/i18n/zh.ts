@@ -69,6 +69,12 @@ export const zh: Translations = {
       notInstalledHeadline: "未检测到",
       docs: "Codex 文档",
     },
+    opencodeCli: {
+      title: "OpenCode CLI",
+      notInstalledHeadline: "未检测到",
+      docs: "OpenCode 文档",
+      docsHref: "https://opencode.ai/v2/docs",
+    },
     statusline: {
       title: "Statusline",
       stateCapturing: "捕获中",
@@ -114,8 +120,8 @@ export const zh: Translations = {
       history: "历史记录",
       since: (day) => `自 ${day} 起`,
       tables: "数据表",
-      agentCounts: (total, claude, codex) =>
-        `共 ${total} · Claude Code ${claude} · Codex ${codex}`,
+      agentCounts: (total, claude, codex, opencode) =>
+        `共 ${total} · Claude Code ${claude} · Codex ${codex} · OpenCode ${opencode}`,
       analytics: {
         title: "分析数据库",
         stateChecking: "检测中",
@@ -480,6 +486,8 @@ export const zh: Translations = {
       info: "本会话已消耗的用量：按种类划分的词元总量——新输入、生成输出、缓存读取，以及 5 分钟和 1 小时的缓存写入。$ 是 Claude Code 自身的会话记账；在订阅方案下它是等价 API 价值，并非实际账单。",
       infoCodex:
         "本会话已消耗的用量：按种类划分的词元总量——新输入、生成输出与缓存读取。Codex 不提供费用记账，因此没有 $ 数值。",
+      infoOpenCode:
+        "本会话已消耗的用量：按种类划分的词元总量——新输入、生成输出与缓存读取。$ 来自 OpenCode 服务自身的会话记账，是实际的费用数值。",
       kinds: {
         input: {
           label: "输入",

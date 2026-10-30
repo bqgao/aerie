@@ -88,6 +88,12 @@ export const en = {
       notInstalledHeadline: "NOT DETECTED",
       docs: "Codex docs",
     },
+    opencodeCli: {
+      title: "OpenCode CLI",
+      notInstalledHeadline: "NOT DETECTED",
+      docs: "OpenCode docs",
+      docsHref: "https://opencode.ai/v2/docs",
+    },
     statusline: {
       title: "Statusline",
       stateCapturing: "CAPTURING",
@@ -135,8 +141,13 @@ export const en = {
       history: "History",
       since: (day: string) => `since ${day}`,
       tables: "Tables",
-      agentCounts: (total: string, claude: string, codex: string) =>
-        `${total} total · Claude Code ${claude} · Codex ${codex}`,
+      agentCounts: (
+        total: string,
+        claude: string,
+        codex: string,
+        opencode: string,
+      ) =>
+        `${total} total · Claude Code ${claude} · Codex ${codex} · OpenCode ${opencode}`,
       analytics: {
         title: "Analytics database",
         stateChecking: "CHECKING",
@@ -553,6 +564,8 @@ export const en = {
       info: "What this session has consumed: total tokens by kind — fresh input, generated output, cached reads, and the 5-minute and 1-hour cache writes. The $ is Claude Code's own session accounting; on a subscription it is the API-equivalent value, not a bill.",
       infoCodex:
         "What this session has consumed: total tokens by kind — fresh input, generated output, and cached reads. Codex reports no cost accounting, so there is no $ figure.",
+      infoOpenCode:
+        "What this session has consumed: total tokens by kind — fresh input, generated output, and cached reads. The $ is OpenCode's own session accounting, from the service's per-session cost, not a derived estimate.",
       // Mirrors ui/token-kinds.ts's TOKEN_KINDS, keyed the same way, so SpendPanel can render
       // translated label/description text while still iterating TOKEN_KINDS for order and key.
       kinds: {

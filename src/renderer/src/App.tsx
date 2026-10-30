@@ -257,7 +257,7 @@ export function App() {
       throw new Error(gate.reason ?? t.settings.cli.unavailableReason);
     // Mint the id here and stand the terminal up BEFORE spawning, so the very first pty bytes land on a
     // live handle. Rows match xterm's pre-fit default (80x24); the view's first fit corrects it.
-    const id = newSessionId();
+    const id = newSessionId(agent);
     terminalStore.create(id);
     try {
       const draft = await window.api.terminal.spawn({
