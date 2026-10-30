@@ -12,6 +12,7 @@ import { createServerProfileStore } from "./servers/profiles";
 import { createServerCredentialStore } from "./servers/credentials";
 import { createConnectionManager } from "./servers/connection-manager";
 import { createSshClientFactory } from "./servers/ssh2-factory";
+import { createRemoteTransport } from "./servers/remote-transport";
 import { isHttpUrl } from "./open-external";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -101,6 +102,11 @@ function createWindow(
   registerRename: (rename: (from: string, to: string) => void) => void,
   shellEnv: () => NodeJS.ProcessEnv,
   appTheme: "dark" | "light",
+  /** Pass R: the on-demand remote transport resolver for managed remote opencode spawns/resumes
+   *  (may dial the tunnel). Optional — test/dev harnesses omit it and remote spawns refuse. */
+  remoteSpawn?: (
+    serverId: string,
+  ) => Promise<{ url: string; env: Record<string, string> } | null>,
 ): void {
   // The renderer header is a fixed HEADER_HEIGHT_PX tall and doubles as the title bar. On macOS we hide
   // the native title bar but KEEP the traffic lights (titleBarStyle 'hidden', never frame:false — the
@@ -166,6 +172,7 @@ function createWindow(
     resolveResumeTarget,
     agentOf,
     launchArgs,
+    remoteSpawn,
     posixShell: { isExecutable: isExecutableFile, findOnPath },
   });
   registerRename(rename);
@@ -281,7 +288,36 @@ app
       credentialsOf: (id) => serverCredentials.get(id),
       sshFactory: createSshClientFactory(),
       onConnected: (id, atMs) => serverProfiles.setLastConnected(id, atMs),
+      // Pass R: every connection loss tears the profile's tunnel down with it (the loopback
+      // listener is inside the SSH leg; nothing survives the pool here). The transport is
+      // referenced one line down — the closure runs lazily on each drop, never at construction.
+      onDown: (id) => remoteTransport.teardown(id),
     });
+    // The Pass R remote transport: tunnels + serve health over the S1 pool, passing the serve
+    // password straight from the credential store (never through a log or status line).
+    const remoteTransport = createRemoteTransport({
+      manager: connectionManager,
+      profileOf: (id) => serverProfiles.list().find((p) => p.id === id),
+      opencodePasswordOf: (id) =>
+        serverCredentials.get(id)?.opencodePassword ?? null,
+      fetchFn: net.fetch.bind(net),
+    });
+    // The on-demand resolver behind managed remote spawns/resumes: ensure the transport (this
+    // may dial the SSH leg), then hand back the base URL and the serve-password env. The
+    // password crosses only this single main-side seam — never a log or a status line.
+    const resolveRemoteSpawn = async (
+      serverId: string,
+    ): Promise<{ url: string; env: Record<string, string> } | null> => {
+      const ensured = await remoteTransport.ensure(serverId, {
+        onDemand: true,
+      });
+      if (!ensured.ok) return null;
+      const password =
+        serverCredentials.get(serverId)?.opencodePassword ?? null;
+      return password
+        ? { url: ensured.baseUrl, env: { OPENCODE_PASSWORD: password } }
+        : { url: ensured.baseUrl, env: {} };
+    };
     const openWindow = (): void =>
       createWindow(
         managed,
@@ -291,6 +327,7 @@ app
         registerRename,
         shellTermEnv,
         appSettings.read().appTheme ?? "dark",
+        resolveRemoteSpawn,
       );
     openWindow();
     app.on("activate", () => {
@@ -414,6 +451,30 @@ app
       managed: {
         has: (id) => managed.agentOf(id) === "opencode",
         cwdOf: (id) => managed.cwdOf(id),
+      },
+      // Pass R: every server profile with an opencode section is one extra source. The list is
+      // resolved PER SWEEP (a tunnel port is minted per connection; servers may appear/vanish):
+      // ensure() runs in non-onDemand mode so a background poll borrows live connections and
+      // only auto-dials autoTunnel profiles; refused servers just don't contribute this pass.
+      remote: {
+        sources: async () => {
+          const rows = serverProfiles.list().filter((p) => p.opencode);
+          const carried = await Promise.all(
+            rows.map(async (p) => {
+              const r = await remoteTransport.ensure(p.id);
+              return r.ok
+                ? {
+                    serverId: p.id,
+                    baseUrl: r.baseUrl,
+                    password:
+                      serverCredentials.get(p.id)?.opencodePassword ?? null,
+                  }
+                : null;
+            }),
+          );
+          return carried.filter((x) => x !== null);
+        },
+        homeDir: homedir(),
       },
     });
     // id → agent: live drafts answer from the registry; indexed rows from the sessions table;
@@ -561,6 +622,13 @@ app
       serverProfiles,
       serverCredentials,
       connectionManager,
+      // Pass R: the serve health per status-carrying server + the on-demand transport resolve
+      // behind serversConnect on opencode profiles.
+      remoteHealth: (id) => remoteTransport.health(id),
+      transportEnsure: async (id) => {
+        const r = await remoteTransport.ensure(id, { onDemand: true });
+        return r.ok ? { ok: true as const, baseUrl: r.baseUrl } : r;
+      },
       sessionPins,
       launchPresets,
       projectState,

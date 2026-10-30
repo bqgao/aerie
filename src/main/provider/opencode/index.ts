@@ -15,6 +15,11 @@ import { readGit } from "../../git/read-git";
 import { readPr } from "../../git/read-pr";
 import { MAX_SESSION_TITLE_LEN } from "@shared/title-override";
 import { asRecord } from "../codex/rollout";
+import {
+  namespacedId,
+  parseNamespacedId,
+  type RemoteSource,
+} from "./namespace";
 import { buildTranscriptDoc, type OpencodeMessage } from "./transcript-events";
 import { extractToolResult } from "./tool-result";
 import { speedFromMessages, usageFromRow, ZERO_USAGE } from "./usage";
@@ -47,10 +52,24 @@ const SESSION_LIST_ROW_CAP = 500;
 /** Messages per message-list page. */
 const MESSAGE_LIST_LIMIT = 100;
 
+/** One remote source for this pass: an ensured transport (baseUrl = the tunnel's loopback port
+ *  or the profile's directUrl) plus the serve password for the Basic header. */
+export interface OpenCodeRemoteSources {
+  /** The REMOTE sources the provider should enumerate this pass — upstream (the composition
+   *  root via remote-transport) has already resolved tunnels/direct URLs and carries only the
+   *  reachable ones; a source that failed its ensure simply doesn't appear. */
+  sources(): Promise<RemoteSource[]>;
+  /** Remote Managed sessions always run their TUI from the user's HOME (the real directory
+   *  lives server-side — OPENCODE_REMOTE_DESIGN.md), so never suggest a remote path as a pty cwd. */
+  homeDir: string;
+}
+
 export interface OpenCodeProviderDeps {
   /** Base-URL discovery (service.ts). The provider is inert — empty candidate lists, `absent`
    *  reads — while this resolves null (CLI missing, service not running). */
   service: ServiceDiscovery;
+  /** Remote serve sources (Pass R). Omitted = local-only (every Pass 1 test path). */
+  remote?: OpenCodeRemoteSources;
   /** The bare fetch surface for the API transport — `net.fetch.bind(net)` at the composition
    *  root (Chromium stack: proxy, OS certs), canned responders in tests. */
   fetchFn: (url: string, init?: RequestInit) => Promise<Response>;
@@ -117,16 +136,34 @@ export function createOpenCodeProvider(
   // The /session/active keys, repopulated by each candidate sweep (shared with
   // resolveResumeTarget so the Resume refusal gate and the displayed state can never disagree
   // about liveness — codex's isFresh sharing rule, generalized to the second liveness signal).
+  // LOCAL keys are bare (raw session ids); REMOTE keys are namespaced per server below.
   const activeAlive = new Set<string>();
+  const activeRemote = new Map<string, Set<string>>();
+
+  const isRemoteActive = (serverId: string, raw: string): boolean =>
+    activeRemote.get(serverId)?.has(raw) ?? false;
+
+  // Which remote servers answered their last sweep — the Resume gate's sync availability hint
+  // (the real tunnel/serve gate re-verifies on demand at spawn time; see terminal/ipc.ts).
+  const remoteKnown = new Set<string>();
 
   // Same signal split as the codex signalsFor: a row fresh as of swept time is "busy";
   // deriveSessionState maps alive+busy → working, alive → idle, dead → ended.
-  const signalsFor = (row: OpencodeSessionRow, isManaged: boolean) => {
+  const signalsFor = (
+    row: OpencodeSessionRow,
+    isManaged: boolean,
+    remote?: { serverId: string; rawId: string },
+  ) => {
     const updated = row.time?.updated;
     const fresh =
       updated !== undefined && now() - updated < OPENCODE_WORKING_WINDOW_MS;
     return {
-      alive: isManaged || activeAlive.has(row.id) || fresh,
+      alive:
+        isManaged ||
+        (remote
+          ? isRemoteActive(remote.serverId, remote.rawId)
+          : activeAlive.has(row.id)) ||
+        fresh,
       status: fresh ? "busy" : undefined,
       awaitingUser: false,
     };
@@ -183,16 +220,55 @@ export function createOpenCodeProvider(
   };
 
   /** Row for id from the sweep cache; on a miss, a bounded re-list (which refills the cache) and
-   *  a second look. Null when the API doesn't know the id. */
+   *  a second look — for a remote id, the re-list rides that id's own source. Null when the API
+   *  doesn't know the id (or the source is unreachable this pass). */
   const rowFor = async (id: string): Promise<OpencodeSessionRow | null> => {
     const cached = rowCache.get(id);
     if (cached) return cached;
+    const ns = parseNamespacedId(id);
+    if (ns) {
+      const source = remoteState.get(ns.serverId);
+      if (source) {
+        await sweepSource(source);
+        return rowCache.get(id) ?? null;
+      }
+      return null; // the server went away between sweeps — absent, not a local re-list
+    }
     await sweepRows();
     return rowCache.get(id) ?? null;
   };
 
   /** All messages for one session, oldest-first. Null after retries exhausted (transient). */
   const messagesFor = async (id: string): Promise<OpencodeMessage[] | null> => {
+    const ns = parseNamespacedId(id);
+    if (ns) {
+      const source = remoteState.get(ns.serverId);
+      if (!source) return null; // source unreachable/unresolved — the read degrades, not rethrown
+      try {
+        const client = createOpenCodeClient({
+          baseUrl: source.baseUrl,
+          password: source.password,
+          fetchFn: deps.fetchFn,
+        });
+        const all: OpencodeMessageRow[] = [];
+        let cursor: string | undefined;
+        for (;;) {
+          const page = await client.listMessages(
+            ns.raw,
+            MESSAGE_LIST_LIMIT,
+            cursor,
+          );
+          all.push(...page.data);
+          if (!page.cursor?.next || all.length >= OPENCODE_MESSAGE_CAP) break;
+          cursor = page.cursor.next;
+        }
+        return all
+          .map((m) => m as unknown as OpencodeMessage)
+          .sort((a, b) => createdAtOf(a) - createdAtOf(b));
+      } catch {
+        return null; // transient per the read-arm contract (keep the last value, retry)
+      }
+    }
     const rows = await withClientRetry(
       true,
       async (cl): Promise<OpencodeMessage[]> => {
@@ -217,6 +293,85 @@ export function createOpenCodeProvider(
   // Message rows per session from the last transcript read — getToolResult/readMetrics's source
   // when the.messages are already in hand. Codex's head/telemetry caches play this role for files.
   const messagesCache = new Map<string, OpencodeMessage[]>();
+
+  // ── Pass R: remote sources ────────────────────────────────────────────────────────────────
+  // serverId → its last-ensured source (base/password). Refreshed every candidate sweep; reads
+  // between sweeps use the last-known client — a stale tunnel URL fails a read with `error`
+  // (transient contract) and the next sweep re-resolves. Never holds secrets in logs.
+  const remoteState = new Map<string, RemoteSource>();
+
+  /** One bounded sweep for ONE remote source: rows namespace into the shared rowCache, active ids
+   *  namespace into activeRemote, candidates come back namespaced. A fetch failure just yields
+   *  no rows this sweep (the source drops out of sources() upstream anyway). */
+  const sweepSource = async (
+    source: RemoteSource,
+  ): Promise<SessionCandidate[]> => {
+    remoteState.set(source.serverId, source);
+    remoteKnown.add(source.serverId);
+    if (!activeRemote.has(source.serverId))
+      activeRemote.set(source.serverId, new Set());
+    const actives = activeRemote.get(source.serverId)!;
+    actives.clear();
+    try {
+      const client = createOpenCodeClient({
+        baseUrl: source.baseUrl,
+        password: source.password,
+        fetchFn: deps.fetchFn,
+      });
+      const all: OpencodeSessionRow[] = [];
+      let cursor: string | undefined;
+      for (;;) {
+        const page = await client.listSessions(SESSION_LIST_LIMIT, cursor);
+        all.push(...page.data);
+        const oldest = all[all.length - 1]?.time?.updated;
+        if (
+          !page.cursor?.next ||
+          all.length >= SESSION_LIST_ROW_CAP ||
+          (oldest !== undefined && now() - oldest > recentWindowMs)
+        )
+          break;
+        cursor = page.cursor.next;
+      }
+      const active = await client.listActive();
+      for (const raw of Object.keys(active)) actives.add(raw);
+      const cutoff = now() - recentWindowMs;
+      const out: SessionCandidate[] = [];
+      for (const row of all) {
+        if (row.parentID) continue; // subagent lanes stay Pass 2+, as on the local side
+        const appId = namespacedId(source.serverId, row.id);
+        if ((row.time?.updated ?? 0) < cutoff && !managed.has(appId)) continue;
+        const sig = signalsFor(row, managed.has(appId), {
+          serverId: source.serverId,
+          rawId: row.id,
+        });
+        rowCache.set(appId, row);
+        out.push({
+          id: appId,
+          agent: "opencode",
+          alive: sig.alive,
+          status: sig.status,
+          // The server-side cwd, verbatim — the remote project IS a project (design doc); no
+          // local path assumption is layered on (the sidebar reads it as a label).
+          cwd: row.location?.directory ?? "",
+          transcriptPath: undefined,
+          transcriptMtimeMs: row.time?.updated ?? 0,
+          updatedAt: row.time?.updated ?? row.time?.created ?? 0,
+        });
+      }
+      return out;
+    } catch {
+      return []; // source offline this sweep — its candidates simply don't appear
+    }
+  };
+
+  /** Sweep every configured remote source in parallel; fills the ns caches and returns their
+   *  candidates. Inert when the composition root wired no remote side. */
+  const sweepRemotes = async (): Promise<SessionCandidate[]> => {
+    if (!deps.remote) return [];
+    const sources = await deps.remote.sources().catch(() => []);
+    if (sources.length === 0) return [];
+    return (await Promise.all(sources.map((s) => sweepSource(s)))).flat();
+  };
 
   const titleFor = (
     row: OpencodeSessionRow | null,
@@ -278,10 +433,12 @@ export function createOpenCodeProvider(
     id: "opencode",
     listCandidates: async (): Promise<SessionCandidate[]> => {
       // The active map rides the same sweep, before the filter, so liveness covers every row this
-      // pass evaluates — signalsFor and the Resume gate read the same set.
-      const [rows, active] = await Promise.all([
+      // pass evaluates — signalsFor and the Resume gate read the same set. Remote sources sweep
+      // in the same pass (each ensures its own transport upstream); a failed source yields no rows.
+      const [rows, active, remoteCands] = await Promise.all([
         sweepRows(),
         withClientRetry(false, (cl) => cl.listActive()),
+        sweepRemotes(),
       ]);
       activeAlive.clear();
       if (active) for (const key of Object.keys(active)) activeAlive.add(key);
@@ -304,7 +461,9 @@ export function createOpenCodeProvider(
           updatedAt: row.time?.updated ?? row.time?.created ?? 0,
         });
       }
-      return out;
+      // The remote arms' candidates merge with the local service's here — the rail reads one
+      // flat candidate list and knows nothing about which source produced a row.
+      return out.concat(remoteCands);
     },
     summarize: summarizeRow,
     restate: (c, prev) => {
@@ -355,7 +514,10 @@ export function createOpenCodeProvider(
     readMetrics: async (id, sinceMtimeMs) => {
       const row = await rowFor(id);
       if (!row) return { status: "absent" };
-      const cwd = row.location?.directory ?? "";
+      // Remote sessions carry a SERVER-side path that local git cannot see — their metric is the
+      // token-speed arm only (design doc + spec). The null git/pr guarantees the merge skips gh.
+      const isRemote = parseNamespacedId(id) !== null;
+      const cwd = isRemote ? "" : (row.location?.directory ?? "");
       const git = cwd ? readGit(cwd) : null;
       // Same skip rule as codex's readMetrics: no browsable remote → no gh spawn.
       const pr = cwd && git && git.remoteUrl ? readPr(cwd, git.branch) : null;
@@ -390,6 +552,14 @@ export function createOpenCodeProvider(
       };
     },
     resolveResumeTarget: (id) => {
+      const ns = parseNamespacedId(id);
+      if (ns) {
+        // Remote Managed session: the TUI runs from HOME (never a remote path — OPENCODE_REMOTE_
+        // DESIGN.md), and the real gate (tunnel + serve) re-verifies on demand in the resume
+        // flow. Availability here = the server answered a sweep at least once.
+        if (!remoteKnown.has(ns.serverId)) return null;
+        return { alive: true, cwd: deps.remote?.homeDir ?? "" };
+      }
       const row = rowCache.get(id);
       if (!row) return null;
       const cwd = row.location?.directory;

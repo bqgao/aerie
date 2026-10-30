@@ -107,6 +107,7 @@ export function registerTerminalIpc({
   env,
   posixShell,
   launchArgs,
+  remoteSpawn,
 }: {
   window: BrowserWindow;
   managed: ManagedRegistry;
@@ -127,6 +128,14 @@ export function registerTerminalIpc({
   /** Durable per-session custom launch args: written at spawn, read back for resume/fork so the
    *  args survive the whole session lifecycle. Optional — tests that don't care omit it. */
   launchArgs?: LaunchArgsStore;
+  /** Pass R: resolve one remote server's transport for a managed remote opencode spawn/resume —
+   *  the tunnel/direct base for `--server` plus the OPENCODE_PASSWORD env (resolved MAIN-side;
+   *  the renderer never sees the value). Null = unreachable → the spawn/resume is refused BEFORE
+   *  any pty exists (crucially also on demand: this may dial the tunnel). */
+  remoteSpawn?: (serverId: string) => Promise<{
+    url: string;
+    env: Record<string, string>;
+  } | null>;
 }): { rename: (from: string, to: string) => void } {
   const manager = createTerminalManager({
     send: (id, data, offset) => {
@@ -170,43 +179,74 @@ export function registerTerminalIpc({
   // The renderer mints the id and stands up its terminal BEFORE calling spawn, so the very first pty
   // bytes land on a live handle (no dropped output, no leaked flow-control credit). We spawn against
   // the id it sends and echo back the optimistic draft for that id.
-  ipcMain.handle(TERMINAL.spawn, (_e, req: SpawnRequest): Session => {
-    // Validate in MAIN even though the renderer pre-checked: this is the trust boundary, and the
-    // reserved flags guard the pty↔Transcript correlation (a smuggled --session-id would break it).
-    const raw = req.extraArgs ?? "";
-    const check = validateExtraArgs(req.agent, raw);
-    if (!check.ok) throw new Error(extraArgsErrorMessage(check));
-    persistLaunchArgs(req.id, raw);
-    manager.spawn({
-      id: req.id,
-      cwd: req.cwd,
-      model: req.model,
-      agent: req.agent,
-      extraArgs: check.tokens,
-      cols: req.cols,
-      rows: req.rows,
-    });
-    return draftSession(req.id, req.cwd, req.model, req.agent);
-  });
+  ipcMain.handle(
+    TERMINAL.spawn,
+    async (_e, req: SpawnRequest): Promise<Session> => {
+      // Validate in MAIN even though the renderer pre-checked: this is the trust boundary, and the
+      // reserved flags guard the pty↔Transcript correlation (a smuggled --session-id would break it).
+      const raw = req.extraArgs ?? "";
+      const check = validateExtraArgs(req.agent, raw);
+      if (!check.ok) throw new Error(extraArgsErrorMessage(check));
+      // Pass R: remote spawn — gate on the transport (this may dial the tunnel on demand) and
+      // attach the resolved base + password env. A refusal throws BEFORE the terminal exists,
+      // so the renderer only ever cleans up its optimistic draft (swept away on the next sync).
+      let remote: { url: string; env: Record<string, string> } | undefined;
+      if (req.serverId) {
+        const resolved = remoteSpawn ? await remoteSpawn(req.serverId) : null;
+        if (!resolved)
+          throw new Error("The server is not reachable for a remote spawn.");
+        remote = resolved;
+      }
+      persistLaunchArgs(req.id, raw);
+      manager.spawn({
+        id: req.id,
+        cwd: req.cwd,
+        model: req.model,
+        agent: req.agent,
+        extraArgs: check.tokens,
+        cols: req.cols,
+        rows: req.rows,
+        remote,
+      });
+      return draftSession(req.id, req.cwd, req.model, req.agent);
+    },
+  );
   // Resume an Ended session: relaunch it under its own id, per agent. The liveness re-check here is
   // the guarantee behind the Ended-only state gate — a session that came back to life since the last
   // sync is refused, so two processes never share one Transcript. cwd (and, for codex, the rollout
   // claim binding) is resolved in main, not trusted from the renderer.
-  ipcMain.handle(TERMINAL.resume, (_e, req: ResumeRequest): ResumeResult => {
-    const d = gateResume(agentOf(req.id), resolveResumeTarget(req.id));
-    if (!d.ok) return { ok: false, reason: d.reason };
-    const stored = launchArgs?.get(req.id) ?? "";
-    manager.resume({
-      id: req.id,
-      cwd: d.cwd,
-      agent: d.agent,
-      claimedRollout: d.claimedRollout,
-      extraArgs: resolveStoredExtraArgs(d.agent, stored),
-      cols: req.cols,
-      rows: req.rows,
-    });
-    return { ok: true };
-  });
+  ipcMain.handle(
+    TERMINAL.resume,
+    async (_e, req: ResumeRequest): Promise<ResumeResult> => {
+      const d = gateResume(agentOf(req.id), resolveResumeTarget(req.id));
+      if (!d.ok) return { ok: false, reason: d.reason };
+      // Pass R: remote resume — the transport resolve (which may dial) happens BEFORE any pty
+      // exists, so a down tunnel is a clean refusal, not a dead terminal tab.
+      let remote: { url: string; env: Record<string, string> } | undefined;
+      if (d.agent === "opencode" && req.id.includes(":")) {
+        const serverId = req.id.slice(0, req.id.indexOf(":"));
+        const resolved = remoteSpawn ? await remoteSpawn(serverId) : null;
+        if (!resolved)
+          return {
+            ok: false,
+            reason: "unreachable" as const,
+          };
+        remote = resolved;
+      }
+      const stored = launchArgs?.get(req.id) ?? "";
+      manager.resume({
+        id: req.id,
+        cwd: d.cwd,
+        agent: d.agent,
+        claimedRollout: d.claimedRollout,
+        extraArgs: resolveStoredExtraArgs(d.agent, stored),
+        cols: req.cols,
+        rows: req.rows,
+        remote,
+      });
+      return { ok: true };
+    },
+  );
   // Fork a session: resume its conversation into a NEW id with --fork-session, so the source Transcript
   // is left untouched. No liveness gate — unlike resume, a fork writes its own Transcript, so it's safe
   // even while the source is still running. cwd is resolved in main from the source id, not trusted from

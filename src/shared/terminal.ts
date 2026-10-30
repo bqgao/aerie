@@ -48,17 +48,23 @@ if (FLOW.lowWaterChars < FLOW.ackChars) {
 /** A fresh pinned session id (uuid v4) — the id the app correlates to the session's Transcript at
  *  `projects/<cwd-slug>/<id>.jsonl`. Minted in the renderer so its terminal is standing before spawn.
  *  opencode mints its `ses_` + 24-base62 shape instead — `opencode --session <id>` continues OR
- *  creates that id (spec'd provenance), so a managed spawn pins a service-shaped id up front. */
-export function newSessionId(agent?: AgentId): string {
+ *  creates that id (spec'd provenance), so a managed spawn pins a service-shaped id up front.
+ *  Against a REMOTE server (serverId given, Pass R), the mint is namespaced `<serverId>:<ses_…>`:
+ *  the listed namespace ships the server identity through the renderer's Alerts-less draft, and
+ *  main strips the prefix before any CLI flag. */
+export function newSessionId(agent?: AgentId, serverId?: string): string {
+  let minted: string;
   if (agent === "opencode") {
     let id = "ses_";
     const alphabet =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     const bytes = crypto.getRandomValues(new Uint8Array(24));
     for (const b of bytes) id += alphabet[b % 62];
-    return id;
+    minted = id;
+  } else {
+    minted = crypto.randomUUID();
   }
-  return crypto.randomUUID();
+  return serverId ? `${serverId}:${minted}` : minted;
 }
 
 /**
@@ -83,6 +89,10 @@ export interface SpawnRequest {
   /** Raw custom launch-args string as typed (tokenized + validated in MAIN — the renderer's live
    *  check is UX only, never the enforcement). Omitted/empty means today's exact spawn. */
   extraArgs?: string;
+  /** For a REMOTE opencode session (Pass R): the profile the session belongs to. The id above
+   *  already carries the namespace; main uses this to resolve the tunnel/direct base and to gate
+   *  the spawn on reachability before any pty exists. */
+  serverId?: string;
   /** Initial terminal size; the renderer's first fit corrects it. */
   cols: number;
   rows: number;
@@ -103,9 +113,11 @@ export interface ResumeRequest {
  * Result of a Resume attempt. Refused when the session is actually alive (the liveness re-check that
  * guards the one-process-per-Transcript invariant) or when no working directory can be resolved.
  */
+/** `unreachable`: Pass R's remote refusal — the gate passed but the server's transport wouldn't
+ *  resolve on demand; the renderer's reason map handles it like the other refusals. */
 export type ResumeResult =
   | { ok: true }
-  | { ok: false; reason: "alive" | "unresolvable" };
+  | { ok: false; reason: "alive" | "unresolvable" | "unreachable" };
 
 /**
  * Fork a session: resume its conversation into a brand-new id with `--fork-session`. The renderer mints

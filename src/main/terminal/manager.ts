@@ -41,6 +41,10 @@ export interface SpawnRequest {
   /** Validated user launch args (already tokenized + denylist-checked in the IPC layer), appended
    *  after the app-managed argv. Omitted/empty means today's exact spawn. */
   extraArgs?: string[];
+  /** Pass R: for an opencode session against a remote serve — the resolved tunnel/direct base
+   *  for `--server` and the injected env (the serve password). Resolved MAIN-side, never sent
+   *  by the renderer. */
+  remote?: { url: string; env: Record<string, string> };
   cols: number;
   rows: number;
 }
@@ -57,6 +61,8 @@ export interface ResumeSpawn {
   /** Validated user launch args (already tokenized + denylist-checked in the IPC layer), appended
    *  after the app-managed argv. Omitted/empty means today's exact spawn. */
   extraArgs?: string[];
+  /** Pass R: remote opencode resume — same shape as spawn's `remote` (resolved main-side). */
+  remote?: { url: string; env: Record<string, string> };
   cols: number;
   rows: number;
 }
@@ -176,6 +182,14 @@ export interface TerminalManager {
  * write); `ack` decrements the credit and resumes the pty once it falls below FLOW.lowWaterChars. So
  * the whole pipeline self-throttles to the terminal's render speed instead of drowning it.
  */
+/** Strip the Pass R namespace from an app-level session id for anything the CLI should see
+ *  (`<serverId>:<raw>` → raw); a bare id passes through untouched. Local to this file so the
+ *  manager doesn't import from the provider layer. */
+function stripNamespace(id: string): string {
+  const i = id.indexOf(":");
+  return i > 0 && i < id.length - 1 ? id.slice(i + 1) : id;
+}
+
 export function createTerminalManager(
   deps: TerminalManagerDeps,
 ): TerminalManager {
@@ -209,6 +223,10 @@ export function createTerminalManager(
     agent: AgentId,
     model?: Family,
     claimedRollout?: string,
+    /** Pass R: extra vars for a remote spawn (the serve password). Base env loses the parent's
+     *  OPENCODE_* names whenever these ride along — the password must never leak from a dev
+     *  shell into the child, and the child must only carry the profile's own credential. */
+    extraEnv?: Record<string, string>,
   ): void {
     if (terms.has(id)) return; // idempotent — a double start of one id is a no-op
     if (!statDir(cwd)) {
@@ -232,11 +250,19 @@ export function createTerminalManager(
     // (no COLORTERM), which is why this only bites the packaged build; dev and real terminals carry it.
     // Force it (not a default) because our WebGL terminal genuinely is 24-bit capable, so the declaration
     // is ours to make, not the launching shell's.
+    const baseEnv = { ...(deps.env?.() ?? process.env) };
+    if (extraEnv) {
+      // Strip the parent's OPENCODE_* names, then layer the resolved credential on top.
+      for (const k of Object.keys(baseEnv)) {
+        if (k.startsWith("OPENCODE_")) delete baseEnv[k];
+      }
+      Object.assign(baseEnv, extraEnv);
+    }
     const pty = createPty({
       file: command.file,
       args: command.args,
       cwd,
-      env: { ...(deps.env?.() ?? process.env), COLORTERM: "truecolor" },
+      env: { ...baseEnv, COLORTERM: "truecolor" },
       cols,
       rows,
     });
@@ -292,9 +318,12 @@ export function createTerminalManager(
       toSpawnForm(
         buildSpawnCommand({
           agent: req.agent,
-          id: req.id,
+          // A remote (Pass R) session pins its RAW id — the app-level namespace is ours to keep,
+          // never a flag the remote CLI should see.
+          id: stripNamespace(req.id),
           model: req.model,
           extraArgs: req.extraArgs,
+          remoteUrl: req.remote?.url,
         }),
         platform,
         platform === "win32" ? undefined : posixShellDeps(),
@@ -304,6 +333,8 @@ export function createTerminalManager(
       req.rows,
       req.agent,
       req.model === "default" ? undefined : req.model,
+      undefined,
+      req.remote?.env,
     );
   }
 
@@ -317,8 +348,9 @@ export function createTerminalManager(
       toSpawnForm(
         buildResumeCommand({
           agent: req.agent,
-          id: req.id,
+          id: stripNamespace(req.id),
           extraArgs: req.extraArgs,
+          remoteUrl: req.remote?.url,
         }),
         platform,
         platform === "win32" ? undefined : posixShellDeps(),
@@ -329,6 +361,7 @@ export function createTerminalManager(
       req.agent,
       undefined,
       req.claimedRollout,
+      req.remote?.env,
     );
   }
 

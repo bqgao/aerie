@@ -42,14 +42,18 @@ export function buildClaudeCommand(opts: {
  * provider/codex/claim.ts) and models are chosen inside its own TUI. opencode pins the session id
  * too: `--session` CONTINUES or CREATES the id (verified on v2.0.28), so a managed session is a
  * claude-style deterministic claim — mint-and-pin, no codex-style claim scan; models are chosen
- * inside its own TUI (no --model wiring). The binary name comes from the AGENTS descriptor, so a
- * future agent adds a branch here without inventing a second registry.
+ * inside its own TUI (no --model wiring). A REMOTE target (Pass R) adds `--server <base>` in
+ * front (verified live: the mint-and-pin creates the session server-side under the flag too).
+ * The binary name comes from the AGENTS descriptor, so a future agent adds a branch here without
+ * inventing a second registry.
  */
 export function buildSpawnCommand(opts: {
   agent: AgentId;
   id: string;
   model: ModelSelection;
   extraArgs?: string[];
+  /** Pass R: run against a remote opencode serve (url = the tunnel/direct base). */
+  remoteUrl?: string;
 }): ClaudeCommand {
   if (opts.agent === "claude")
     return buildClaudeCommand({
@@ -62,10 +66,14 @@ export function buildSpawnCommand(opts: {
       file: AGENTS[opts.agent].binary,
       args: [...(opts.extraArgs ?? [])],
     };
-  // opencode: pin the minted id up front — the CLI creates the session under it on first write.
+  // opencode: pin the minted id up front — the CLI creates the session under it on first write;
+  // with a remote base the same pin lands on that --server instance instead of the local one.
+  const sessionArgs = ["--session", opts.id, ...(opts.extraArgs ?? [])];
   return {
     file: AGENTS[opts.agent].binary,
-    args: ["--session", opts.id, ...(opts.extraArgs ?? [])],
+    args: opts.remoteUrl
+      ? ["--server", opts.remoteUrl, ...sessionArgs]
+      : sessionArgs,
   };
 }
 
@@ -146,14 +154,18 @@ export function toSpawnForm(
  * keeps writing the same Transcript at `projects/<cwd-slug>/<id>.jsonl`; codex
  * (`codex resume <id>` — subcommand form, no flags) appends in place to the same rollout file;
  * opencode (`opencode --session <id>`) continues the same server-side session — no rollout, the
- * flag IS the pin (same shape as its spawn, per its verbatim docs). No `--model` on any of them:
- * each CLI restores the session's model itself, which is the "inherit" in one-click Resume. The
- * binary name comes from the AGENTS descriptor, matching buildSpawnCommand's per-agent dispatch.
+ * flag IS the pin (same shape as its spawn, per its verbatim docs) — with `--server <base>`
+ * prepended when the session is a remote one (Pass R: base = the tunnel/direct base). No
+ * `--model` on any of them: each CLI restores the session's model itself, which is the
+ * "inherit" in one-click Resume. The binary name comes from the AGENTS descriptor, matching
+ * buildSpawnCommand's per-agent dispatch.
  */
 export function buildResumeCommand(opts: {
   agent: AgentId;
   id: string;
   extraArgs?: string[];
+  /** Pass R: continue the pin on a remote opencode serve (url = the tunnel/direct base). */
+  remoteUrl?: string;
 }): ClaudeCommand {
   if (opts.agent === "claude")
     return {
@@ -163,7 +175,15 @@ export function buildResumeCommand(opts: {
   if (opts.agent === "opencode")
     return {
       file: AGENTS.opencode.binary,
-      args: ["--session", opts.id, ...(opts.extraArgs ?? [])],
+      args: opts.remoteUrl
+        ? [
+            "--server",
+            opts.remoteUrl,
+            "--session",
+            opts.id,
+            ...(opts.extraArgs ?? []),
+          ]
+        : ["--session", opts.id, ...(opts.extraArgs ?? [])],
     };
   return {
     file: AGENTS[opts.agent].binary,

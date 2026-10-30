@@ -19,6 +19,7 @@ import {
   type DbInfo,
 } from "@shared/ipc";
 import type {
+  OpencodeHealth,
   ServerConnectResult,
   ServerCredentialsInput,
   ServerProfile,
@@ -145,6 +146,20 @@ const numOrNull = (v: unknown): number | undefined =>
   typeof v === "number" && Number.isFinite(v) ? v : undefined;
 const AUTH_MODES = ["password", "key", "agent"] as const;
 
+/** The Pass R opencode section off a raw renderer payload (absent = the profile hosts no serve;
+ *  the store validates the fields, here they're only reshaped). */
+function opencodeSectionOf(
+  r: Record<string, unknown>,
+): ServerProfileInput["opencode"] {
+  const raw = asRecord(r.opencode);
+  if (!raw) return undefined;
+  return {
+    servePort: numOrNull(raw.servePort) ?? 0,
+    directUrl: str(raw.directUrl),
+    autoTunnel: raw.autoTunnel === true,
+  };
+}
+
 export function normalizeProfileInput(
   raw: unknown,
 ): { ok: true; value: ServerProfileInput } | { ok: false; error: string } {
@@ -164,6 +179,7 @@ export function normalizeProfileInput(
       username: str(r.username) ?? "",
       authMode,
       keyPath: str(r.keyPath),
+      opencode: opencodeSectionOf(r),
     },
   };
 }
@@ -177,7 +193,12 @@ export function normalizeCredentialInput(
     v === null ? null : typeof v === "string" ? v : undefined;
   return {
     ok: true,
-    value: { password: kind(r.password), passphrase: kind(r.passphrase) },
+    value: {
+      password: kind(r.password),
+      passphrase: kind(r.passphrase),
+      // Pass R: the remote serve password — same rules, third key, same file.
+      opencodePassword: kind(r.opencodePassword),
+    },
   };
 }
 
@@ -273,6 +294,14 @@ export interface IpcDeps {
   serverProfiles?: ServerProfileStore;
   serverCredentials?: ServerCredentialStore;
   connectionManager?: ConnectionManager;
+  /** Pass R: per-server opencode serve health (TTL-cached in the transport). Merged into
+   *  status(); absent serverIds simply carry no opencode field. */
+  remoteHealth?: (serverId: string) => Promise<OpencodeHealth | null>;
+  /** Pass R: on-demand transport resolve behind serversConnect for opencode profiles (dial-able,
+   *  caller-driven flow); surfaced in status(), never silently swallowed. */
+  transportEnsure?: (
+    serverId: string,
+  ) => Promise<{ ok: true; baseUrl: string } | { ok: false; error: string }>;
 }
 
 export function attachCliStatus<T extends object>(
@@ -315,6 +344,8 @@ export function registerIpc({
   serverProfiles,
   serverCredentials,
   connectionManager,
+  remoteHealth,
+  transportEnsure,
 }: IpcDeps): { sync: () => Promise<void> } {
   const reader: StatusLineReader = statusLine ?? { read: () => [] };
   const readEmail = accountEmail ?? ((): string | null => null);
@@ -1322,17 +1353,32 @@ export function registerIpc({
       if (!connectionManager) return { ok: false, error: "Not wired." };
       if (typeof id !== "string" || id.length === 0)
         return { ok: false, error: "Unknown profile." };
-      return connectionManager.connect(id);
+      const r = await connectionManager.connect(id);
+      if (!r.ok) return r;
+      // Pass R: a caller-driven connect also establishes the opencode transport (dial-able by
+      // design); a transport failure surfaces as a well-formed result, not a silent no-op.
+      if (transportEnsure) return transportEnsure(id);
+      return r;
     },
   );
   ipcMain.handle(IPC.serversDisconnect, (_e, id: string): void => {
     if (typeof id === "string") connectionManager?.disconnect(id);
   });
-  ipcMain.handle(
-    IPC.serversStatus,
-    (): ServerStatusMap =>
-      connectionManager ? connectionManager.status() : {},
-  );
+  ipcMain.handle(IPC.serversStatus, async (): Promise<ServerStatusMap> => {
+    const base: ServerStatusMap = connectionManager
+      ? connectionManager.status()
+      : {};
+    if (!remoteHealth) return base;
+    // Merge the serve health per status-carrying id (S1's pool entries) — the serve probe is
+    // TTL-cached upstream, so this merge costs at most one coalesced probe per 20s window.
+    await Promise.all(
+      Object.keys(base).map(async (id) => {
+        const h = await remoteHealth(id);
+        if (h) base[id] = { ...base[id], opencode: h };
+      }),
+    );
+    return base;
+  });
   ipcMain.handle(
     IPC.serversTest,
     async (_e, rawInput?: unknown): Promise<ServerTestResult> => {
