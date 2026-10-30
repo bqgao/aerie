@@ -118,8 +118,9 @@ export interface ServiceDiscoveryDeps {
 }
 
 /** OpenCode's config dir: OPENCODE_CONFIG_DIR on top, else the CLI's own well-known path
- *  (~/.config/opencode — OpenCode reads XDG_CONFIG_HOME/opencode and falls back to ~/.config on
- *  every platform, including Windows). */
+ *  (~/.config/opencode — verified live on macOS v2.0.28: the CLI ignores XDG_CONFIG_HOME, and
+ *  `opencode debug config` reads ~/.config/opencode/opencode.jsonc even with XDG_CONFIG_HOME
+ *  overridden; `OPENCODE_CONFIG_DIR` is the CLI's documented override). */
 export function resolveOpencodeConfigDir(
   env: NodeJS.ProcessEnv | undefined,
 ): string {
