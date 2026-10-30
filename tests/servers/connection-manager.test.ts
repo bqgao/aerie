@@ -17,14 +17,30 @@ function makeFactory() {
       onReady(): void;
       onError(err: Error): void;
       onClose(hadError: boolean): void;
+      onDown?(err: Error | null): void;
     };
     execs: Exec[];
     ended: boolean;
+    up: boolean;
+    down: boolean;
+    heldError: Error | null;
   };
   const lives: Live[] = [];
+  const down = (l: Live, err: Error | null): void => {
+    if (l.down) return; // one physical drop, one onDown — mirroring the real factory
+    l.down = true;
+    l.handlers.onDown?.(err);
+  };
   const factory: SshClientFactory = (config, handlers) => {
     configs.push(config as unknown as Record<string, unknown>);
-    const live: Live = { handlers, execs: [], ended: false };
+    const live: Live = {
+      handlers,
+      execs: [],
+      ended: false,
+      up: false,
+      down: false,
+      heldError: null,
+    };
     lives.push(live);
     const rpc: SshClientRpc = {
       connect: () => {}, // the fake dials on construction; connect() is a marker
@@ -37,16 +53,40 @@ function makeFactory() {
     };
     return rpc;
   };
+  /** Fire one event on the newest client through the factory's routing rules. */
+  const route = (
+    ev: "ready" | "error" | "close",
+    arg: Error | boolean,
+  ): void => {
+    const l = lives[lives.length - 1];
+    if (!l) throw new Error("no live dial");
+    if (ev === "ready") {
+      l.up = true;
+      l.handlers.onReady();
+    } else if (ev === "error") {
+      if (!l.up) l.handlers.onError(arg as Error);
+      else {
+        l.heldError = arg as Error;
+        down(l, l.heldError);
+      }
+    } else {
+      if (!l.up) l.handlers.onClose(arg as boolean);
+      else down(l, l.heldError); // error-carried close → its message; clean close → null
+    }
+  };
   return {
     configs,
     lives,
     factory,
     latest: (): Live => lives[lives.length - 1],
-    ready: () => lives[lives.length - 1].handlers.onReady(),
-    fail: (msg: string) =>
-      lives[lives.length - 1].handlers.onError(new Error(msg)),
-    close: (hadError: boolean) =>
-      lives[lives.length - 1].handlers.onClose(hadError),
+    ready: () => route("ready", false),
+    /** Dial-phase failure (pre-ready). */
+    fail: (msg: string) => route("error", new Error(msg)),
+    close: (hadError: boolean) => route("close", hadError),
+    /** Post-ready clean drop: server reboot / link cut with no ssh2 'error'. */
+    dropClean: () => route("close", false),
+    /** Post-ready error drop: ssh2 emits 'error' carrying the message (then 'close'). */
+    dropError: (msg: string) => route("error", new Error(msg)),
     /** Answer the newest client's first exec with `text` (stream data + close) or an error. */
     execOutput: (text: string) => {
       const live = lives[lives.length - 1];
@@ -320,6 +360,73 @@ describe("createConnectionManager", () => {
       error: "No password stored for this profile.",
     });
     expect(ssh.configs).toHaveLength(0);
+  });
+
+  it("a post-ready clean drop flips status to error with the drop message, evicts, and withClient goes null", async () => {
+    const { ssh, manager } = makeManager();
+    const first = manager.connect("srv-1");
+    ssh.ready();
+    await first;
+    expect(manager.status()["srv-1"]).toEqual({ status: "connected" });
+    expect(manager.withClient("srv-1", (r) => r !== null)).toBe(true);
+    // The server reboots: a close with no ssh2 error, after ready.
+    ssh.dropClean();
+    // The dead client is gone from the pool; the drop reason is sticky for the row.
+    expect(manager.status()["srv-1"]).toEqual({
+      status: "error",
+      lastError: "The connection dropped.",
+    });
+    expect(manager.withClient("srv-1", (r) => r)).toBeNull();
+  });
+
+  it("a post-ready ssh2 'error' drop carries that message instead of the generic one", async () => {
+    const { ssh, manager } = makeManager();
+    const first = manager.connect("srv-1");
+    ssh.ready();
+    await first;
+    ssh.dropError("connection reset by peer");
+    expect(manager.status()["srv-1"]).toEqual({
+      status: "error",
+      lastError: "connection reset by peer",
+    });
+    expect(manager.withClient("srv-1", (r) => r)).toBeNull();
+    // 'error' then 'close' is ssh2's normal pairing — the second report must not override.
+    ssh.close(false);
+    expect(manager.status()["srv-1"]).toEqual({
+      status: "error",
+      lastError: "connection reset by peer",
+    });
+  });
+
+  it("a user disconnect reads offline (absent), never an error — even with a late close event", async () => {
+    const { ssh, manager } = makeManager();
+    const first = manager.connect("srv-1");
+    ssh.ready();
+    await first;
+    manager.disconnect("srv-1");
+    // The user-initiated call already evicted; then ssh2's clean close fires on the ended client.
+    expect(manager.status()["srv-1"]).toBeUndefined();
+    ssh.dropClean(); // the late close lands on the flagged entry — must stay silent
+    expect(manager.status()["srv-1"]).toBeUndefined(); // offline, NOT "error"
+  });
+
+  it("after a drop, connect() re-dials cleanly and the sticky error clears", async () => {
+    const { ssh, manager } = makeManager();
+    const first = manager.connect("srv-1");
+    ssh.ready();
+    await first;
+    ssh.dropClean();
+    expect(manager.status()["srv-1"]).toEqual({
+      status: "error",
+      lastError: "The connection dropped.",
+    });
+    const second = manager.connect("srv-1");
+    expect(manager.status()["srv-1"]).toEqual({ status: "connecting" });
+    ssh.ready();
+    await second;
+    expect(ssh.configs).toHaveLength(2); // a fresh dial
+    expect(manager.status()["srv-1"]).toEqual({ status: "connected" });
+    expect(manager.status()["srv-1"].lastError).toBeUndefined(); // sticky error gone
   });
 
   it("unknown profile ids are answered without touching the factory", async () => {

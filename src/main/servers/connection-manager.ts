@@ -48,6 +48,12 @@ export type SshClientFactory = (
     onReady(): void;
     onError(err: Error): void;
     onClose(hadError: boolean): void;
+    /** Post-ready lifecycle sink: at most ONE call per client, from the first 'error'/'close'
+     *  AFTER ready (the error's message when ssh2 emitted one, null for a clean close). A client
+     *  whose factory hands this never routes post-ready traffic back into the dial-phase
+     *  handlers — that's exactly the silent-dead-connection defect this seam exists to close.
+     *  Optional so a fake can omit it (test() does — the probe's own timeout arbitrates). */
+    onDown?(err: Error | null): void;
   },
 ) => SshClientRpc;
 
@@ -95,8 +101,9 @@ export function createConnectionManager(deps: SshDeps): ConnectionManager {
       connecting?: boolean;
       /** A second connect() while the first dial is in flight attaches to its outcome. */
       followers?: Array<{ ok(): void; fail(err: Error): void }>;
-      /** The dial's timeout, so a late clean-up can't leave a dangling timer. */
-      timer?: NodeJS.Timeout;
+      /** Set by disconnect() before end(): the close ssh2 then fires routes through onDown, which
+       *  checks this flag so a user teardown reads offline (no error), not as a remote drop. */
+      userEnded?: boolean;
     }
   >();
   // Remembered per-profile lastError — sticky BY DESIGN: the error must stay visible in the row
@@ -123,6 +130,23 @@ export function createConnectionManager(deps: SshDeps): ConnectionManager {
   const evict = (id: string, keepError = false): void => {
     pool.delete(id);
     if (!keepError) lastError.delete(id);
+  };
+
+  /** The post-ready drop record: a LIVE connection died (ssh2 'error'/'close' after ready).
+   *  Evicts so withClient() can never hand out a dead client, and leaves the drop reason sticky
+   *  so the settings row shows WHY the lamp went red — until the next connect attempt clears it.
+   *  A user-initiated disconnect takes precedence (its entry is flagged before end()): offline,
+   *  not an error. `onDown` fires at most once per client (the factory dedupes), but the
+   *  entry-identity guard below also absorbs races with a newer dial for the same id. */
+  const markDown = (
+    id: string,
+    entry: { userEnded?: boolean; followers?: unknown[] },
+    err: Error | null,
+  ): void => {
+    if (entry.userEnded) return; // user-initiated teardown → handled by disconnect's evict
+    if (pool.get(id) !== entry) return; // evicted already (or superseded by a re-dial)
+    pool.delete(id);
+    lastError.set(id, err ? err.message : "The connection dropped.");
   };
 
   /** Auth-material resolution shared by pool-connect and test: plain field checks, one failure
@@ -173,9 +197,12 @@ export function createConnectionManager(deps: SshDeps): ConnectionManager {
   };
 
   /** One dial shared by connect() and test(): resolve on ready, reject on error/close/timeout.
-   *  The first of those events wins; later ones are ignored (a post-ready close fires straight
-   *  into the pool's evict, not into this promise). */
-  const dial = (config: SshConnectConfig): Promise<SshClientRpc> =>
+   *  The first of those events wins; post-ready movement routes to `onDown` (the pool's drop
+   *  record for connect(), a no-op for test(), whose probe timeout arbitrates). */
+  const dial = (
+    config: SshConnectConfig,
+    onDown?: (err: Error | null) => void,
+  ): Promise<SshClientRpc> =>
     new Promise((resolve, reject) => {
       let settled = false;
       const timer = setTimeout(() => {
@@ -206,6 +233,7 @@ export function createConnectionManager(deps: SshDeps): ConnectionManager {
               ),
             ),
           ),
+        onDown,
       });
       rpc.connect(config);
     });
@@ -238,11 +266,28 @@ export function createConnectionManager(deps: SshDeps): ConnectionManager {
         rpc?: SshClientRpc;
         connecting?: boolean;
         followers?: Array<{ ok(): void; fail(err: Error): void }>;
+        /** Set by disconnect() BEFORE end(): the late 'close' that follows must read as
+         *  user-initiated offline, never as a remote drop carrying an error. */
+        userEnded?: boolean;
       } = { connecting: true, followers: [] };
       pool.set(id, entry);
       lastError.delete(id); // a fresh attempt leaves any sticky error behind
-      return dial(built.config).then(
+      return dial(built.config, (downErr) => markDown(id, entry, downErr)).then(
         (rpc) => {
+          // Defensive gap-closer: a synthetic factory can fire ready + down in one tick, dropping
+          // the entry before this mount runs. Ending the socket and surfacing the recorded error
+          // keeps the pool's invariants (no rpc without a live entry) intact.
+          if (pool.get(id) !== entry) {
+            try {
+              rpc.end();
+            } catch {
+              // drop-already-recorded: the stub never made it into the pool
+            }
+            return {
+              ok: false as const,
+              error: lastError.get(id) ?? "The connection dropped.",
+            };
+          }
           entry.rpc = rpc;
           entry.connecting = false;
           deps.onConnected(id, now());
@@ -263,6 +308,9 @@ export function createConnectionManager(deps: SshDeps): ConnectionManager {
       const entry = pool.get(id);
       evict(id);
       if (!entry?.rpc) return;
+      // Flag BEFORE end(): the 'close' ssh2 then fires must read as user-initiated offline,
+      // not as a remote drop (markDown checks the flag through its closure).
+      entry.userEnded = true;
       try {
         entry.rpc.end();
       } catch {
