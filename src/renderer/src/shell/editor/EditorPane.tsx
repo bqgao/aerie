@@ -6,11 +6,13 @@
  * (name + origin badge + dirty dot + markdown mode toggle) / the textarea editor / footer
  * status line (Ln/Col, UTF-8, size, or the in-band error line — "Saved" flashes after a save).
  *
- * Editing model (spec): textarea v1 — no CodeMirror/Monaco/mermaid/PDF (I-b); Tab inserts two
+ * Editing model (spec): textarea v1 — CodeMirror/mermaid deferred to I-c; Tab inserts two
  * spaces; Ctrl/Cmd+S saves through the origin's channel (fileio:* local, SftpService server);
  * markdown (.md/.markdown) gains an Edit⇄Preview header toggle rendering the DRAFT through the
  * transcript's MarkdownMessage pipeline (kept-mounted state, never a remount); capped (512KiB)
- * tabs render read-only with a banner; binary reads render the in-band message view. A dirty
+ * tabs render read-only with a banner; binary reads render the in-band message view; PDF tabs
+ * (status "pdf") render the READ-ONLY <webview> pdfium viewer (I-b route (a) — local files
+ * stream from disk, server files from main's content-hash temp copy). A dirty
  * close asks Save/Discard/Cancel (the three-button dialog below). Local files drop onto the
  * pane (Electron File API → main's webUtils path).
  *
@@ -18,7 +20,7 @@
  * wiring plus the shared open/save actions (the SFTP pane's context-menu "Edit" rides
  * `openServerInEditor`).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, createElement } from "react";
 import { useStore } from "@nanostores/react";
 import { useI18n } from "../../i18n";
 import { cx, focusRing } from "../../ui/atoms";
@@ -454,6 +456,26 @@ function TabBody({
             </div>
           )}
 
+          {/* The PDF viewer (status "pdf"): Chromium's own pdfium UI inside a <webview> guest —
+              no textarea, no save path (Ctrl+S reads the dirty guard's false and no-ops; the
+              footer states read-only). The guest is fully sandboxed (no node) and UNMOUNTS with
+              the tab: switching or closing this tab destroys the element, which is the lifecycle
+              contract's whole risk surface — a re-focus re-creates it, reloading from the same
+              URL (local disk or main's content-hash temp copy). */}
+          {active.status === "pdf" && active.pdfUrl && (
+            <>
+              <PdfViewport url={active.pdfUrl} name={active.name} />
+              <div className="flex h-6 shrink-0 items-center gap-3 border-t border-(--ui-stroke-quaternary) px-3 font-mono text-label text-(--ui-text-quaternary)">
+                <span aria-hidden>{t.editor.header.readOnly}</span>
+                <span aria-hidden>{humanizeBytes(active.bytes)}</span>
+                <div className="flex-1" />
+                {active.error ? (
+                  <span className="truncate text-danger">{active.error}</span>
+                ) : null}
+              </div>
+            </>
+          )}
+
           {active.status !== "ready" ? null : (
             <>
               {active.capped && (
@@ -544,6 +566,18 @@ function TabBody({
 
 // Perf detail: cursorInfo runs against the LIVE active record so the footer follows typings;
 // the two helpers below read the module-level registry instead of threading props.
+
+/** The <webview> element isn't html: the JSX typing umbrella has no intrinsic for it, so the
+ *  PDF viewport builds it directly with createElement (src is the ONLY prop it needs; every
+ *  other guest preference is Electron's safe default — sandboxed, no node). */
+function PdfViewport({ url, name }: { url: string; name: string }) {
+  return createElement("webview", {
+    key: url,
+    "aria-label": name,
+    className: "min-h-0 flex-1",
+    src: url,
+  });
+}
 
 function setTabModeSafe(tab: EditorTab, mode: "edit" | "preview"): void {
   setTabMode(tab.id, mode); // setTabMode re-checks canPreview (the guard rules live in the model)

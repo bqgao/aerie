@@ -47,6 +47,7 @@ const read = (
   opts: { bytes?: number; capped?: boolean } = {},
 ) => ({
   ok: true as const,
+  kind: "text" as const,
   content,
   bytes: opts.bytes ?? Buffer.byteLength(content),
   capped: opts.capped ?? false,

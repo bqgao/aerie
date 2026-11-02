@@ -577,6 +577,7 @@ export const en = {
       forbiddenPath: "Code-by-wire refuses to edit its own data files.",
       notFound: "File not found.",
       binary: "Binary file, not editable in this version.",
+      pdfTooLarge: "PDF is larger than 20 MB — not opened.",
       readFailed: (message: string) => `Could not read the file: ${message}`,
       saveFailed: (message: string) => `Save failed: ${message}`,
     },
@@ -882,6 +883,10 @@ export const en = {
       error: "failed",
       pending: "running",
     },
+    // The transcript→editor link (I-b): shown on a tool-drill-in (the modal's expanded state)
+    // only when the input IS one absolute path under the session's directory — never a
+    // heuristic pick, so the affordance appears rather than disambiguates.
+    openInEditor: "Open in editor",
     toolResult: {
       loading: "Loading output…",
       loadError: "Couldn't load output.",

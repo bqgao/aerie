@@ -23,7 +23,7 @@ export type EditorOrigin =
       opencode: boolean;
     };
 
-export type EditorStatus = "loading" | "ready" | "binary" | "error";
+export type EditorStatus = "loading" | "ready" | "pdf" | "binary" | "error";
 
 export interface EditorTab {
   id: string;
@@ -37,6 +37,9 @@ export interface EditorTab {
   bytes: number;
   /** True when the read hit the 512KiB cap — the tab renders read-only with a banner. */
   capped: boolean;
+  /** PDF tabs only: the `file://` URL the <webview> viewer loads (the tab kind is visible in
+   *  `status === "pdf"`; the URL survives applyRead for re-focusing the tab body). */
+  pdfUrl: string | null;
   /** Markdown tabs only: Edit ⇄ Preview over the DRAFT. */
   mode: "edit" | "preview";
   /** The last failure's raw message (in-band; the footer shows it verbatim). */
@@ -61,6 +64,12 @@ export function isMarkdownName(name: string): boolean {
   return /\.(md|markdown)$/i.test(name);
 }
 
+/** PDFs open the READ-ONLY webview viewer (route (a), zero deps): the binary refusal that
+ *  still applies to other binaries never fires for .pdf — the tab kind routes by name. */
+export function isPdfName(name: string): boolean {
+  return /\.pdf$/i.test(name);
+}
+
 export function newEditorTab(origin: EditorOrigin): EditorTab {
   return {
     id: tabIdOf(origin),
@@ -71,6 +80,7 @@ export function newEditorTab(origin: EditorOrigin): EditorTab {
     snapshot: "",
     bytes: 0,
     capped: false,
+    pdfUrl: null,
     mode: "edit",
     error: null,
   };
@@ -111,9 +121,12 @@ export function reduceTabs(
 }
 
 /** A fresh read REPLACES the in-progress state: the tab was loading (this is its first fill) and
- *  any draft it held is superseded by what's on disk now. */
+ *  any draft it held is superseded by what's on disk now. The pdf variant carries no content —
+ *  only the `file://` URL for the <webview> viewer (local files stream from disk; server PDFs
+ *  stream from the main-side temp copy). */
 export type TabRead =
-  | { ok: true; content: string; bytes: number; capped: boolean }
+  | { ok: true; kind: "text"; content: string; bytes: number; capped: boolean }
+  | { ok: true; kind: "pdf"; url: string; bytes: number }
   | { ok: false; binary?: boolean; message: string };
 
 export function applyRead(tab: EditorTab, read: TabRead): EditorTab {
@@ -127,6 +140,19 @@ export function applyRead(tab: EditorTab, read: TabRead): EditorTab {
       mode: "edit",
     };
   }
+  if (read.kind === "pdf") {
+    return {
+      ...tab,
+      status: "pdf",
+      draft: "",
+      snapshot: "",
+      bytes: read.bytes,
+      capped: false,
+      pdfUrl: read.url,
+      mode: "edit",
+      error: null,
+    };
+  }
   return {
     ...tab,
     status: "ready",
@@ -134,6 +160,7 @@ export function applyRead(tab: EditorTab, read: TabRead): EditorTab {
     snapshot: read.content,
     bytes: read.bytes,
     capped: read.capped,
+    pdfUrl: null,
     mode: "edit",
     error: null,
   };
@@ -173,8 +200,10 @@ export function isDirty(tab: EditorTab): boolean {
   return tab.status === "ready" && tab.draft !== tab.snapshot;
 }
 
-/** The read-only reason for a `ready` tab (a capped tab is the one cap on v1's editing). */
-export function readOnlyReason(tab: EditorTab): "capped" | null {
+/** The read-only reason for a tabless body: a capped `ready` tab is the one cap on v1's
+ *  editing, and a `pdf` tab is read-only BY KIND (the webview viewer can never save). */
+export function readOnlyReason(tab: EditorTab): "capped" | "pdf" | null {
+  if (tab.status === "pdf") return "pdf";
   return tab.capped ? "capped" : null;
 }
 

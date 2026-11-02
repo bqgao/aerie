@@ -519,6 +519,7 @@ export const zh: Translations = {
       forbiddenPath: "Code-by-wire 拒绝编辑自身的数据文件。",
       notFound: "找不到文件。",
       binary: "二进制文件，当前版本不可编辑。",
+      pdfTooLarge: "PDF 超过 20 MB，未打开。",
       readFailed: (message) => `读取文件失败：${message}`,
       saveFailed: (message) => `保存失败：${message}`,
     },
@@ -774,6 +775,8 @@ export const zh: Translations = {
       error: "失败",
       pending: "运行中",
     },
+    // 转录→编辑器入口（I-b）：仅当工具输入就是一个位于会话目录下的绝对路径时出现，不做启发式猜测。
+    openInEditor: "在编辑器中打开",
     toolResult: {
       loading: "正在加载输出…",
       loadError: "输出加载失败。",

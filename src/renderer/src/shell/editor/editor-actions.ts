@@ -20,6 +20,8 @@ import {
 } from "./editor-store";
 import {
   isDirty,
+  isPdfName,
+  basenameEditorish,
   readOnlyReason,
   serverOriginOf,
   tabIdOf,
@@ -59,19 +61,52 @@ function localizeSftpRead(res: {
   return errors.readFailed(res.error);
 }
 
+/** Server-PDF pull failures: the temp-cache crumbs (not found / over the 20MiB cap) map to
+ *  the dedicated wording, the raw message otherwise. */
+function localizePdfTempOpen(res: {
+  notFound?: boolean;
+  tooLarge?: boolean;
+  error: string;
+}): string {
+  const errors = editorErrors();
+  if (res.notFound) return errors.notFound;
+  if (res.tooLarge) return errors.pdfTooLarge;
+  return errors.readFailed(res.error);
+}
+
+/** Build a `file://` URL for an absolute local path (the PDF tab's <webview> src for LOCAL
+ *  files — server ones get the URL from main's temp copy). Percent-encodes every segment so
+ *  spaces and `#`/?& characters survive the URL parse; one definition here (the renderer
+ *  never string-concats a file URL). */
+export function pdfLocalUrlOf(path: string): string {
+  const segments = path.replace(/\\/g, "/").split("/");
+  return `file://${segments.map((seg) => (seg ? encodeURIComponent(seg) : "")).join("/")}`;
+}
+
 /** Open + load one LOCAL file (the pick dialog and the drop paths funnel here). In-band: a
- *  failed read still lands a tab carrying the mapped message. */
+ *  failed read still lands a tab carrying the mapped message. PDFs route to the READ-ONLY
+ *  viewer tab — no text read, no binary refusal (the name decides the kind). */
 export async function openLocalPath(path: string): Promise<void> {
   const origin: EditorOrigin = { kind: "local", path };
   setPaneOpen(EDITOR_PANE_ID, true);
   openEditorTab(origin);
   const id = tabIdOf(origin);
+  if (isPdfName(origin.path)) {
+    applyTabRead(id, {
+      ok: true,
+      kind: "pdf",
+      url: pdfLocalUrlOf(path),
+      bytes: 0,
+    });
+    return;
+  }
   const res = await window.api.fileio.read(path);
   applyTabRead(
     id,
     res.ok
       ? {
           ok: true,
+          kind: "text" as const,
           content: res.content,
           bytes: res.bytes,
           capped: res.capped,
@@ -88,7 +123,9 @@ export async function openLocalPick(): Promise<void> {
 }
 
 /** Open + load one SERVER file (the SFTP pane's Edit item and the Server… picker). The badge
- *  rides the profile's own opencode field; in-band failures land the tab as above. */
+ *  rides the profile's own opencode field; in-band failures land the tab as above. PDFs on a
+ *  server bypass SFTP readFile (it refuses binaries) and ride main's temp-cache pull instead
+ *  — the temp copy serves the webview while the tab keeps the server origin badge. */
 export async function openServerInEditor(
   serverId: string,
   path: string,
@@ -106,12 +143,28 @@ export async function openServerInEditor(
   setPaneOpen(EDITOR_PANE_ID, true);
   openEditorTab(origin);
   const id = tabIdOf(origin);
+  if (isPdfName(basenameEditorish(path))) {
+    const res = await window.api.pdfTemp.openPdfServer(serverId, path);
+    applyTabRead(
+      id,
+      res.ok
+        ? {
+            ok: true,
+            kind: "pdf" as const,
+            url: res.fileUrl,
+            bytes: res.bytes,
+          }
+        : { ok: false, message: localizePdfTempOpen(res) },
+    );
+    return;
+  }
   const res = await window.api.sftp.readFile(serverId, path);
   applyTabRead(
     id,
     res.ok
       ? {
           ok: true,
+          kind: "text" as const,
           content: res.content,
           bytes: res.bytes,
           capped: res.capped,
