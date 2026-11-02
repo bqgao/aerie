@@ -328,6 +328,7 @@ function CenterView({
       doc={subagentDoc}
       dispatchDrill={dispatchDrill}
       sessionId={s.id}
+      sessionCwd={s.cwd}
     />
   ) : null;
   const drilled = drill.length > 0;
@@ -391,7 +392,7 @@ function RenderedTranscript({
   dispatchDrill?: DispatchDrill;
 }) {
   const readOnly = s.management === "observed";
-  const { onOpen, modals } = useTranscriptModals(s.id);
+  const { onOpen, modals } = useTranscriptModals(s.id, undefined, s.cwd);
   return (
     <OverlayScroll className="h-full">
       <TranscriptView

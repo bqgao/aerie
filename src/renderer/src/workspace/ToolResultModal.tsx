@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ToolEvent, ToolResultDetail } from "@shared/transcript";
 import { ModalCloseButton } from "../ui/ModalCloseButton";
 import { ModalShell } from "../ui/ModalShell";
@@ -11,6 +11,8 @@ import { AnsiLine } from "./panels/AnsiLine";
 import { turnStatus } from "./turn-status";
 import { POLL_MS } from "./use-polled-read";
 import { useCopyFlash } from "../ui/use-copy-flash";
+import { OpenInEditorButton } from "./OpenInEditorButton";
+import { toolFileTargetOf, type ToolFileSource } from "./tool-file-link";
 
 type Loaded = Extract<ToolResultDetail, { found: true }>;
 type FetchState =
@@ -21,15 +23,19 @@ type FetchState =
 /** The detail modal for one tool turn: a pinned command bar (with copy) and the complete output rendered
  *  with ANSI color. The header renders instantly from the row event; command, output, and the
  *  authoritative status are fetched on open via getToolResult and re-polled while the call is still
- *  running, so an open modal fills in when its tool finishes. No output cap — the body scrolls. */
+ *  running, so an open modal fills in when its tool finishes. No output cap — the body scrolls.
+ *  When the tool's OWN command field resolves (I-b) — one absolute path under the session's
+ *  directory — the footer carries the "Open in editor" affordance beside the copy buttons. */
 export function ToolResultModal({
   sessionId,
   agentId,
+  linkSource,
   tool,
   onClose,
 }: {
   sessionId: string;
   agentId?: string;
+  linkSource?: ToolFileSource | null;
   tool: ToolEvent;
   onClose: () => void;
 }) {
@@ -75,6 +81,10 @@ export function ToolResultModal({
   const command = state.phase === "ready" ? state.detail.command : tool.input;
   const cmd = useCopyFlash(command);
   const out = useCopyFlash(state.phase === "ready" ? state.detail.output : "");
+  const fileTarget = useMemo(
+    () => toolFileTargetOf(linkSource ?? null, command),
+    [linkSource, command],
+  );
 
   return (
     <ModalShell
@@ -164,6 +174,7 @@ export function ToolResultModal({
       </OverlayScroll>
 
       <div className="mt-3 flex items-center gap-2 text-label text-fg-faint">
+        {fileTarget && <OpenInEditorButton target={fileTarget} />}
         <button
           type="button"
           disabled={state.phase !== "ready" || state.detail.output === ""}

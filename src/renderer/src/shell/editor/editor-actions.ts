@@ -22,6 +22,7 @@ import {
   isDirty,
   isPdfName,
   basenameEditorish,
+  pdfLocalUrlOf,
   readOnlyReason,
   serverOriginOf,
   tabIdOf,
@@ -72,15 +73,6 @@ function localizePdfTempOpen(res: {
   if (res.notFound) return errors.notFound;
   if (res.tooLarge) return errors.pdfTooLarge;
   return errors.readFailed(res.error);
-}
-
-/** Build a `file://` URL for an absolute local path (the PDF tab's <webview> src for LOCAL
- *  files — server ones get the URL from main's temp copy). Percent-encodes every segment so
- *  spaces and `#`/?& characters survive the URL parse; one definition here (the renderer
- *  never string-concats a file URL). */
-export function pdfLocalUrlOf(path: string): string {
-  const segments = path.replace(/\\/g, "/").split("/");
-  return `file://${segments.map((seg) => (seg ? encodeURIComponent(seg) : "")).join("/")}`;
 }
 
 /** Open + load one LOCAL file (the pick dialog and the drop paths funnel here). In-band: a

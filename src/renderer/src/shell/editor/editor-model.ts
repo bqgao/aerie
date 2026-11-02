@@ -70,6 +70,29 @@ export function isPdfName(name: string): boolean {
   return /\.pdf$/i.test(name);
 }
 
+/** A `file://` URL for an absolute local path (the PDF tab's <webview> src — server PDFs get
+ *  their URL from main's temp copy instead). Percent-encodes every segment so spaces and
+ *  `#`/?& characters survive the URL parse. Pure: the renderer never string-concats a file
+ *  URL anywhere else. Works for both spellings of a Windows absolute path (backslashes
+ *  become slashes, the drive segments with the rest). */
+export function pdfLocalUrlOf(path: string): string {
+  // Percent-encode only what a URL parse can't keep verbatim (spaces, %, #, ?, non-ASCII…);
+  // the RFC's unreserved + sub-delim characters — including `$`, `:`, `&`, `!`, `(`, `)`,
+  // `*`, `+` — stay literal so a Windows drive (`file:///C:/…`) parses as written.
+  const enc = (c: string) =>
+    /[A-Za-z0-9\-._~!$&'()*+,;=:]/.test(c) ? c : encodeURIComponent(c);
+  const normal = path.replace(/\\/g, "/");
+  const segments = normal.split("/");
+  // Keep the URL's empty host: `file:///<abs path>` even for Windows drive paths ("C:/…"
+  // has no leading slash, so the empty first segment is what supplies the third slash).
+  if (segments[0] !== "") segments.unshift("");
+  return `file://${segments
+    .map((seg) =>
+      seg ? seg.replace(/[^A-Za-z0-9\-._~!$&'()*+,;=:]/g, enc) : "",
+    )
+    .join("/")}`;
+}
+
 export function newEditorTab(origin: EditorOrigin): EditorTab {
   return {
     id: tabIdOf(origin),

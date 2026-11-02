@@ -41,18 +41,26 @@ export function SubagentDrill({
   doc,
   dispatchDrill,
   sessionId,
+  sessionCwd,
 }: {
   crumbs: SubagentCrumb[];
   onNavigate: (depth: number) => void;
   doc: DocState;
   dispatchDrill?: DispatchDrill;
   sessionId: string;
+  /** The owning session's directory: the transcript→editor link (I-b) resolves against it
+   *  exactly as the session-level modals do (a subagent works on the same project dir). */
+  sessionCwd?: string | null;
 }) {
   const { t } = useI18n();
   const current = crumbs[crumbs.length - 1];
   // Open-state for this subagent's detail modals. agentId is the current crumb, so a tool's full output
   // is fetched from this subagent's own transcript file.
-  const { onOpen, modals } = useTranscriptModals(sessionId, current.agentId);
+  const { onOpen, modals } = useTranscriptModals(
+    sessionId,
+    current.agentId,
+    sessionCwd,
+  );
   return (
     <div className="flex h-full flex-col">
       <Breadcrumb crumbs={crumbs} onNavigate={onNavigate} />

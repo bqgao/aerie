@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { DiffEvent } from "@shared/transcript";
 import { ModalCloseButton } from "../ui/ModalCloseButton";
 import { ModalShell } from "../ui/ModalShell";
@@ -9,21 +10,30 @@ import { useI18n } from "../i18n";
 import { toolIcon } from "./tool-icon";
 import { turnStatus } from "./turn-status";
 import { splitFilePath } from "./file-path";
+import { OpenInEditorButton } from "./OpenInEditorButton";
+import { toolFileTargetOf, type ToolFileSource } from "./tool-file-link";
 
 /** The detail modal for one edit (Edit / Write / MultiEdit): a header with the tool, file, and change
  *  counts, then the full hunk as red removed / green added lines. The hunk is already on the event, so
- *  there is no fetch — the body just scrolls. */
+ *  there is no fetch — the body just scrolls. The `file` field IS a path, so when it resolves under
+ *  the session's directory (I-b) the path bar carries the "Open in editor" affordance beside Copy path. */
 export function DiffModal({
   diff,
+  linkSource,
   onClose,
 }: {
   diff: DiffEvent;
+  linkSource?: ToolFileSource | null;
   onClose: () => void;
 }) {
   const { t } = useI18n();
   const empty = diff.hunk.removed.length === 0 && diff.hunk.added.length === 0;
   const st = turnStatus(diff.status, t);
   const file = splitFilePath(diff.file);
+  const fileTarget = useMemo(
+    () => toolFileTargetOf(linkSource ?? null, diff.file),
+    [linkSource, diff.file],
+  );
   const patch = [
     ...diff.hunk.removed.map((l) => `- ${l}`),
     ...diff.hunk.added.map((l) => `+ ${l}`),
@@ -64,6 +74,7 @@ export function DiffModal({
           </span>
         </div>
         <div className="mt-2 flex items-center gap-2">
+          {fileTarget && <OpenInEditorButton target={fileTarget} />}
           <button
             type="button"
             onClick={pathCopy.copy}
