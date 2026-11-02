@@ -270,6 +270,9 @@ export interface PersistedSession {
   /** Last parsed transcript tail left a prompt unanswered. Stored so state can be recomputed on a
    *  sync that skips the (unchanged) transcript, without reparsing it. */
   awaitingUser: boolean;
+  /** The tail's waiting reason — what the unanswered prompt/pending tool actually is (tier-1 spec
+   *  Run 2 / A5). Absent when nothing is unanswered; rides awaiting_user's parse, never a separate one. */
+  waitingReason?: string;
   /** mtime (ms) of the transcript when it was last parsed — the incremental high-water mark. A sync
    *  reparses only when the file's current mtime exceeds this. 0 means the session has no transcript. */
   transcriptMtimeMs: number;

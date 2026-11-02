@@ -286,6 +286,7 @@ export function summarize(c: SessionCandidate): PersistedSession {
     lastActivityMs: t?.lastActivityMs || c.updatedAt || 0,
     createdMs: t?.createdMs || c.updatedAt || 0,
     awaitingUser,
+    waitingReason: t?.waitingReason ?? undefined,
     transcriptMtimeMs: c.transcriptMtimeMs,
     usage: t?.usage ?? {
       inputTokens: 0,

@@ -52,6 +52,11 @@ const SESSION_LIST_ROW_CAP = 500;
 /** Messages per message-list page. */
 const MESSAGE_LIST_LIMIT = 100;
 
+/** The waiting reason A5 assigns at row level: an opencode session signals waiting when its last
+ *  message is the assistant's (agent turn complete) and /active no longer owns it — a constant,
+ *  generic reason at row level; the transcript read's verbatim reason (if any) rides the doc. */
+export const OPENCODE_WAITING_REASON = "Turn complete";
+
 /** One remote source for this pass: an ensured transport (baseUrl = the tunnel's loopback port
  *  or the profile's directUrl) plus the serve password for the Basic header. */
 export interface OpenCodeRemoteSources {
@@ -147,25 +152,68 @@ export function createOpenCodeProvider(
   // (the real tunnel/serve gate re-verifies on demand at spawn time; see terminal/ipc.ts).
   const remoteKnown = new Set<string>();
 
-  // Same signal split as the codex signalsFor: a row fresh as of swept time is "busy";
-  // deriveSessionState maps alive+busy → working, alive → idle, dead → ended.
+  // Managed-but-not-active rows are sent ONE bounded probe per row version (limit=1 message read)
+  // to decide waiting (tier-1 spec Run 2 / A5): the last message being from the assistant means
+  // the agent's turn ended and the session now needs the user. Cached by the row's own change
+  // token (`time.updated`), so each row version probes once however many passes watch it; a
+  // failed probe is never cached — it repeats next pass. Remote rows are never probed (their
+  // aliveness comes from the active map / freshness only).
+  const lastMessageType = new Map<
+    string,
+    { updated: number; type: "user" | "assistant" | null }
+  >();
+  const probeLastMessage = async (
+    row: OpencodeSessionRow,
+  ): Promise<"user" | "assistant" | null> => {
+    const updated = row.time?.updated ?? 0;
+    const cached = lastMessageType.get(row.id);
+    if (cached && cached.updated === updated) return cached.type;
+    const page = await withClientRetry(false, (cl) =>
+      cl.listMessages(row.id, 1),
+    );
+    if (!page) {
+      lastMessageType.delete(row.id); // transient failure — never cache, never wedge waiting
+      return null;
+    }
+    const first = page.data[0];
+    const type =
+      first && (first.type === "user" || first.type === "assistant")
+        ? first.type
+        : null;
+    lastMessageType.set(row.id, { updated, type });
+    return type;
+  };
+
+  const isRowFresh = (row: OpencodeSessionRow): boolean => {
+    const updated = row.time?.updated;
+    return (
+      updated !== undefined && now() - updated < OPENCODE_WORKING_WINDOW_MS
+    );
+  };
+
+  // Same signal split as the codex signalsFor, extended with the managed waiting signal
+  // (tier-1 spec Run 2 / A5): a row fresh as of swept time is "busy"; a managed row that is
+  // neither fresh nor in /active and whose last message is the assistant's is "waiting" —
+  // the agent's turn is complete and the session needs its user; deriveSessionState maps
+  // alive+busy → working, alive+waiting → waiting, alive → idle, dead → ended.
   const signalsFor = (
     row: OpencodeSessionRow,
     isManaged: boolean,
     remote?: { serverId: string; rawId: string },
   ) => {
-    const updated = row.time?.updated;
-    const fresh =
-      updated !== undefined && now() - updated < OPENCODE_WORKING_WINDOW_MS;
+    const active = remote
+      ? isRemoteActive(remote.serverId, remote.rawId)
+      : activeAlive.has(row.id);
+    const fresh = isRowFresh(row);
+    const waiting =
+      isManaged &&
+      !active &&
+      !fresh &&
+      lastMessageType.get(row.id)?.type === "assistant";
     return {
-      alive:
-        isManaged ||
-        (remote
-          ? isRemoteActive(remote.serverId, remote.rawId)
-          : activeAlive.has(row.id)) ||
-        fresh,
-      status: fresh ? "busy" : undefined,
-      awaitingUser: false,
+      alive: isManaged || active || fresh,
+      status: fresh ? "busy" : waiting ? "waiting" : undefined,
+      awaitingUser: waiting,
     };
   };
 
@@ -410,14 +458,19 @@ export function createOpenCodeProvider(
       state: deriveSessionState({
         alive: candidate.alive,
         status: candidate.status,
-        awaitingUser: false,
+        awaitingUser: candidate.status === "waiting",
       }),
+      // The A5 waiting signal's reason: a session signaling waiting finished its agent turn —
+      // "Turn complete". Everything else carries no row-level reason (the transcript read that
+      // computes the verbatim one is on-demand, never a rail poll).
+      waitingReason:
+        candidate.status === "waiting" ? OPENCODE_WAITING_REASON : undefined,
       management: managed.has(candidate.id) ? "managed" : "observed",
       model: normalizeModelId(modelRaw),
       modelRaw,
       lastActivityMs: updated || 0,
       createdMs: row?.time?.created ?? candidate.updatedAt ?? 0,
-      awaitingUser: false,
+      awaitingUser: candidate.status === "waiting",
       transcriptMtimeMs: candidate.transcriptMtimeMs,
       usage: row?.tokens ? usageFromRow(row.tokens) : ZERO_USAGE,
       usageByModel: [], // per-model attribution needs the message's own modelID — Pass 2
@@ -449,7 +502,13 @@ export function createOpenCodeProvider(
         // of a tracked session must not become a second sidebar row.
         if (row.parentID) continue;
         if ((row.time?.updated ?? 0) < cutoff && !managed.has(row.id)) continue;
-        const sig = signalsFor(row, managed.has(row.id));
+        // The waiting probes are bounded: a managed row past its freshness window that /active
+        // doesn't own is the only shape the probe decides for — at most one last-message read per
+        // unchanged row version, per the cache.
+        const isManaged = managed.has(row.id);
+        if (isManaged && !activeAlive.has(row.id) && !isRowFresh(row))
+          await probeLastMessage(row);
+        const sig = signalsFor(row, isManaged);
         out.push({
           id: row.id,
           agent: "opencode",
@@ -478,7 +537,7 @@ export function createOpenCodeProvider(
         state: deriveSessionState({
           alive: c.alive,
           status: c.status,
-          awaitingUser: false,
+          awaitingUser: c.status === "waiting",
         }),
       };
     },

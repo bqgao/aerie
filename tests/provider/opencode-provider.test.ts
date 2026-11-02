@@ -81,7 +81,7 @@ function makeProvider(opts: {
   const service = fakeService(opts.noService ? null : BASE);
   fakeServiceCounter.resolves = 0;
   fakeServiceCounter.invalidates = 0;
-  const { fetchFn } = fakeFetch({
+  const { fetchFn, requests } = fakeFetch({
     session: opts.session,
     active: opts.active,
     messages: opts.messages,
@@ -95,7 +95,7 @@ function makeProvider(opts: {
     recentWindowMs: opts.recentWindowMs,
     managed: opts.managed,
   });
-  return { p, service };
+  return { p, service, requests };
 }
 
 describe("createOpenCodeProvider", () => {
@@ -310,3 +310,135 @@ describe("createOpenCodeProvider", () => {
     });
   });
 });
+
+describe("opencode waiting signals (tier-1 Run 2 / A5)", () => {
+  // Stale relative to the 10s working window: the only shape the waiting probe decides for.
+  const STALE_NOW = (ROOT.time?.updated ?? 0) + 60_000;
+  const FRESH_NOW = (ROOT.time?.updated ?? 0) + 5_000;
+  const managed = { has: () => true };
+
+  it("a managed session past its freshness window whose last message is the assistant waits", async () => {
+    const { p } = makeProvider({
+      session: { data: [ROOT], cursor: null },
+      active: { data: {} },
+      messages: { data: [{ id: "m2", type: "assistant" }], cursor: null },
+      now: () => STALE_NOW,
+      managed,
+    });
+    const [c] = await p.listCandidates();
+    expect(c.alive).toBe(true);
+    expect(c.status).toBe("waiting");
+    const s = await p.summarize(c);
+    expect(s.state).toBe("waiting");
+    expect(s.awaitingUser).toBe(true);
+    expect(s.waitingReason).toBe("Turn complete");
+  });
+
+  it("a row the active map still owns is never waiting — /active wins over the tail", async () => {
+    // Per the spec, WAITING requires NOT being in /active; an active-owned stale row (the app's
+    // pre-existing alive-but-not-fresh shape) stays exactly what it was: alive, idle.
+    const { p } = probeProvider(STALE_NOW, {
+      last: [{ id: "m2", type: "assistant" }],
+      activeOwning: true,
+    });
+    const [c] = await p.listCandidates();
+    expect(c.alive).toBe(true);
+    expect(c.status).toBeUndefined();
+    const s = await p.summarize(c);
+    expect(s.state).toBe("idle");
+    expect(s.waitingReason).toBeUndefined();
+  });
+
+  it("a freshness-held row stays busy and is never probed", async () => {
+    const { p, requests } = probeProvider(FRESH_NOW, {
+      last: [{ id: "m2", type: "assistant" }],
+    });
+    const [c] = await p.listCandidates();
+    expect(c.status).toBe("busy");
+    expect(messageRequests(requests)).toHaveLength(0);
+  });
+
+  it("last message from the user means the ball is with the agent, not the user", async () => {
+    const { p } = probeProvider(STALE_NOW, {
+      last: [{ id: "m1", type: "user" }],
+    });
+    const [c] = await p.listCandidates();
+    expect(c.status).toBeUndefined();
+    const s = await p.summarize(c);
+    expect(s.state).toBe("idle");
+    expect(s.waitingReason).toBeUndefined();
+  });
+
+  it("a failed probe degrades to not-waiting and is retried on the next pass", async () => {
+    const { p, requests } = probeProvider(STALE_NOW, { failMessages: true });
+    const [c] = await p.listCandidates();
+    expect(c.status).toBeUndefined();
+    // Not cached: the next pass re-probes.
+    await p.listCandidates();
+    expect(messageRequests(requests)).toHaveLength(2);
+  });
+
+  it("probes each row version once — the cache rides the row's change token", async () => {
+    const { p, requests } = probeProvider(STALE_NOW, {
+      last: [{ id: "m2", type: "assistant" }],
+    });
+    await p.listCandidates();
+    await p.listCandidates();
+    expect(messageRequests(requests)).toHaveLength(1);
+    // An unchanged row keeps its waiting signal for free on the cached pass.
+    const [c] = await p.listCandidates();
+    expect(c.status).toBe("waiting");
+  });
+
+  it("unmanaged rows never wait — a gone process is ended, as before", async () => {
+    const { p, requests } = probeProvider(STALE_NOW, {
+      last: [{ id: "m2", type: "assistant" }],
+      managed: false,
+    });
+    const [c] = await p.listCandidates();
+    expect(c.alive).toBe(false);
+    expect(c.status).toBeUndefined();
+    expect(messageRequests(requests)).toHaveLength(0);
+  });
+
+  it("restate derives waiting from the candidate's carried status and keeps the reason", async () => {
+    const { p } = probeProvider(STALE_NOW, {
+      last: [{ id: "m2", type: "assistant" }],
+    });
+    const [c] = await p.listCandidates();
+    const snap = await p.summarize(c);
+    const restated = p.restate(c, snap);
+    expect(restated.state).toBe("waiting");
+    expect(restated.waitingReason).toBe("Turn complete");
+  });
+});
+/** The waiting-probe tests' tighter harness: same single row, explicit last-message list, and
+ *  the raw request log so the tests can count probes. */
+function probeProvider(
+  nowMs: number,
+  opts: {
+    last: unknown[];
+    failMessages?: boolean;
+    managed?: boolean;
+    activeOwning?: boolean;
+  },
+) {
+  const { p, requests } = makeProvider({
+    session: { data: [ROOT], cursor: null },
+    active: {
+      data: opts.activeOwning ? { [ROOT.id]: { type: "running" } } : {},
+    },
+    messages: { data: opts.last, cursor: null },
+    refuse: false,
+    failMessages: opts.failMessages,
+    now: () => nowMs,
+    managed: { has: () => opts.managed ?? true },
+  });
+  return { p, requests };
+}
+
+function messageRequests(requests: string[]): string[] {
+  return requests.filter(
+    (url) => url.includes("/api/session/") && url.includes("/message"),
+  );
+}

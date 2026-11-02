@@ -72,6 +72,7 @@ describe("summarize", () => {
     expect(s.state).toBe("working"); // alive + status busy
     expect(s.lastActivityMs).toBe(Date.parse("2026-06-08T22:54:06.078Z"));
     expect(s.awaitingUser).toBe(false);
+    expect(s.waitingReason).toBeUndefined(); // nothing unanswered in this transcript
     expect(s.transcriptMtimeMs).toBe(1);
     expect(s.usage).toEqual({
       inputTokens: 100,
@@ -104,6 +105,54 @@ describe("summarize", () => {
       ),
     );
     expect(s.state).toBe("waiting");
+  });
+
+  it("threads the tail's waitingReason verbatim into the persisted payload (tier-1 Run 2 / A5)", () => {
+    // A pending Bash tool_use with no tool_result — the tail's reason reads "Permission: Bash".
+    const id = "eeee5555-5555-5555-5555-555555555555";
+    const body = [
+      {
+        type: "user",
+        isMeta: false,
+        cwd: "/work/code-by-wire",
+        gitBranch: "main",
+        timestamp: "2026-06-08T22:53:40.000Z",
+        message: { role: "user", content: "run the build" },
+      },
+      {
+        type: "assistant",
+        cwd: "/work/code-by-wire",
+        gitBranch: "main",
+        timestamp: "2026-06-08T22:54:06.078Z",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4-6",
+          usage: { input_tokens: 10, output_tokens: 2 },
+          content: [
+            {
+              type: "tool_use",
+              id: "t1",
+              name: "Bash",
+              input: { command: "make" },
+            },
+          ],
+        },
+      },
+    ];
+    // The suite's fixture root is fixed (CLAUDE_DIR), not a temp HOME — write the transcript
+    // there so fixtureCandidate's own path resolution finds it.
+    writeTranscript(
+      CLAUDE_DIR,
+      "-work-code-by-wire",
+      id,
+      body.map((r) => JSON.stringify(r)).join("\n"),
+      1746735246,
+    );
+    const s = summarize(
+      fixtureCandidate(id, "-work-code-by-wire", { status: "idle" }),
+    );
+    expect(s.state).toBe("waiting");
+    expect(s.waitingReason).toBe("Permission: Bash");
   });
 
   it("falls back to a registry skeleton when there is no transcript", () => {

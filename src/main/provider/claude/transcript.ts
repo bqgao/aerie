@@ -27,6 +27,9 @@ export interface TranscriptSummary {
   createdMs: number;
   /** The last turn left a question or permission prompt unanswered (a tool_use with no result). */
   awaitingUser: boolean;
+  /** The tail's waiting reason, verbatim from the provider (tier-1 spec Run 2 / A5): what the
+   *  unanswered prompt or pending tool actually is. Null when nothing is unanswered. */
+  waitingReason: string | null;
   /** Token usage summed across the transcript's assistant turns. */
   usage: Usage;
   /** Latest turn's full prompt (input + cache-read + cache-creation): the current context size, for context %. */
@@ -324,6 +327,7 @@ export function parseTranscript(
     lastActivityMs,
     createdMs,
     awaitingUser: tail.awaitingUser,
+    waitingReason: tail.waitingReason(),
     usage: usageAcc.totals(),
     contextTokens: tail.context ? contextTotal(tail.context) : 0,
     effortLevel,
