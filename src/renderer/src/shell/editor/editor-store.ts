@@ -22,6 +22,12 @@ export const EDITOR_PANE_ID = "editor";
 export const $editorTabs = atom<readonly EditorTab[]>([]);
 /** The selected tab id (null = the pane shows its empty state). */
 export const $editorActiveId = atom<string | null>(null);
+/** The active tab's caret readout (1-based Ln/Col) — the footer follows typings via this
+ *  atom rather than threading a callback per keystroke through the TabBody boundary. */
+export const $editorCursor = atom<{ line: number; col: number }>({
+  line: 1,
+  col: 1,
+});
 
 export function openEditorTab(origin: EditorOrigin): void {
   const reduced = reduceTabs($editorTabs.get(), $editorActiveId.get(), {

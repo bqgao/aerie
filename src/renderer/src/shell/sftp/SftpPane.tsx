@@ -40,6 +40,7 @@ import {
   sortEntries,
   type SftpSortKey,
 } from "./sftp-model";
+import { openServerInEditor } from "../editor/editor-actions";
 import {
   $sftpClipboard,
   $sftpServerId,
@@ -834,7 +835,24 @@ export function SftpPane() {
       {menu && (
         <SftpContextMenu
           items={[
-            { label: t.sftp.menu.open, disabled: true, run: () => {} },
+            {
+              label: t.sftp.menu.edit,
+              // Pass I-a: server FILES open in the Editor pane's tab family (dirs/dot no-op —
+              // the Edit entry replaces the old disabled Open placeholder for the file case).
+              disabled:
+                !disabledTargets ||
+                menuTargets.length !== 1 ||
+                menuTargets[0].kind !== "file",
+              run: () => {
+                const target = menuTargets[0];
+                if (target?.kind === "file" && serverId) {
+                  void openServerInEditor(
+                    serverId,
+                    joinRemoteFor(cwd, target.name),
+                  );
+                }
+              },
+            },
             {
               label: t.sftp.menu.download,
               disabled: !disabledTargets,
