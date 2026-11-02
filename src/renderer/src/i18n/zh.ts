@@ -434,6 +434,8 @@ export const zh: Translations = {
       cutHint: "已剪切",
       newFileDefault: "未命名.txt",
       newFolderDefault: "未命名文件夹",
+      // pass I-a：服务器文件在编辑器面板的页签中打开。
+      edit: "编辑",
     },
     confirm: {
       deleteTitle: (count) => `删除 ${count} 项？`,
@@ -467,6 +469,64 @@ export const zh: Translations = {
     },
     lock: {
       reconnectedBanner: "已重连——刷新",
+    },
+  },
+  /** 编辑器面板（pass I-a）：本地 fileio:* 与 SFTP readFile/writeFile 的停靠页签。 */
+  editor: {
+    pane: {
+      title: "编辑器",
+      tabListAria: "打开的文件",
+      closeTabAria: (name) => `关闭 ${name}`,
+    },
+    empty: {
+      hint: "打开一个文件",
+      dropHint: "…或把本地文件拖到这里。",
+      noServers: "尚未添加服务器——在设置中保存一个即可编辑其文件。",
+    },
+    open: {
+      button: "打开",
+      local: "本地…",
+      server: "服务器…",
+      serverLabel: "服务器",
+      pathLabel: "路径",
+      pathPlaceholder: "/绝对路径/file.md",
+      open: "打开",
+    },
+    header: {
+      localBadge: "本地",
+      serverBadge: "SSH",
+      opencodeBadge: "opencode",
+      readOnly: "只读",
+      modeEdit: "编辑",
+      modePreview: "预览",
+      previewUnavailable: "仅未改动的 .md 文件可预览。",
+    },
+    footer: {
+      utf8: "UTF-8",
+      lineCol: (line, col) => `第 ${line} 行，第 ${col} 列`,
+      savedFlash: "已保存",
+    },
+    banner: {
+      capped: "文件过大——已加载前 512 KB，编辑已禁用。",
+    },
+    binary: {
+      title: "二进制文件",
+      body: "该文件不是文本，在当前版本无法编辑。",
+    },
+    errors: {
+      invalidPath: "请提供本机上的绝对路径。",
+      forbiddenPath: "Code-by-wire 拒绝编辑自身的数据文件。",
+      notFound: "找不到文件。",
+      binary: "二进制文件，当前版本不可编辑。",
+      readFailed: (message) => `读取文件失败：${message}`,
+      saveFailed: (message) => `保存失败：${message}`,
+    },
+    dirty: {
+      title: "未保存的修改",
+      body: (name) => `${name} 尚有未保存的修改，关闭前保存吗？`,
+      save: "保存",
+      discard: "放弃",
+      cancel: "取消",
     },
   },
   terminal: {

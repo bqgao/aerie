@@ -487,6 +487,8 @@ export const en = {
       // The name prompt's placeholder for the two create-paths (rename starts from the row).
       newFileDefault: "untitled.txt",
       newFolderDefault: "untitled-folder",
+      // Pass I-a: server files open into the Editor pane's tab family.
+      edit: "Edit",
     },
     confirm: {
       deleteTitle: (count: number) =>
@@ -522,6 +524,68 @@ export const en = {
     },
     lock: {
       reconnectedBanner: "Reconnected — refresh",
+    },
+  },
+  /** The Editor pane (pass I-a): docked tabs over the `fileio:*` local family and the SFTP
+   *  service's readFile/writeFile. `errors.*` maps the fileio errorKind taxonomy (and the SFTP
+   *  failure crumbs) to wording; `message` fallbacks come in raw from mains. */
+  editor: {
+    pane: {
+      title: "Editor",
+      tabListAria: "Open files",
+      closeTabAria: (name: string) => `Close ${name}`,
+    },
+    empty: {
+      hint: "Open a file",
+      dropHint: "…or drop a local file here.",
+      noServers: "No servers yet — save one in Settings to edit its files.",
+    },
+    open: {
+      button: "Open",
+      local: "Local…",
+      server: "Server…",
+      serverLabel: "Server",
+      pathLabel: "Path",
+      pathPlaceholder: "/absolute/path/file.md",
+      open: "Open",
+    },
+    header: {
+      localBadge: "Local",
+      serverBadge: "SSH",
+      opencodeBadge: "opencode",
+      readOnly: "Read-only",
+      modeEdit: "Edit",
+      modePreview: "Preview",
+      previewUnavailable: "Preview is available for fresh .md files.",
+    },
+    footer: {
+      utf8: "UTF-8",
+      lineCol: (line: number, col: number) => `Ln ${line}, Col ${col}`,
+      savedFlash: "Saved",
+    },
+    banner: {
+      capped:
+        "Large file — the first 512 KB is loaded and editing is disabled.",
+    },
+    binary: {
+      title: "Binary file",
+      body: "This file isn't text, so it can't be edited in this version.",
+    },
+    errors: {
+      invalidPath: "Open an absolute path on this machine.",
+      forbiddenPath: "Code-by-wire refuses to edit its own data files.",
+      notFound: "File not found.",
+      binary: "Binary file, not editable in this version.",
+      readFailed: (message: string) => `Could not read the file: ${message}`,
+      saveFailed: (message: string) => `Save failed: ${message}`,
+    },
+    dirty: {
+      title: "Unsaved changes",
+      body: (name: string) =>
+        `${name} has unsaved changes. Save them before closing?`,
+      save: "Save",
+      discard: "Discard",
+      cancel: "Cancel",
     },
   },
   /** Chrome for both terminal surfaces: the interactive shell-terminal pane's tab rail
