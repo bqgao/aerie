@@ -11,6 +11,7 @@ export default defineConfig({
       ["tests/renderer/**", "jsdom"],
       ["tests/xterm/**", "jsdom"],
     ],
+    setupFiles: ["tests/setup/local-storage.ts"],
     include: ["tests/**/*.test.ts"],
   },
 });
