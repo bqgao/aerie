@@ -56,9 +56,7 @@ export interface LocalIo {
     abort(): Promise<void>;
   };
   /** A local fd pager (null = the file can't be opened). */
-  reader(
-    path: string,
-  ): {
+  reader(path: string): {
     size: number;
     read(buffer: Buffer, position: number): Promise<number>;
     close(): void;
@@ -135,35 +133,34 @@ export const realLocalIo: LocalIo = {
     } catch {
       return null;
     }
-    let size = 0;
     try {
-      size = nodeFs.statSync(path).size;
+      const size = nodeFs.statSync(path).size;
+      return {
+        size,
+        read(buffer, position) {
+          return new Promise<number>((resolve, reject) => {
+            nodeFs.read(
+              fd,
+              buffer,
+              0,
+              buffer.byteLength,
+              position,
+              (err, bytesRead) => (err ? reject(err) : resolve(bytesRead)),
+            );
+          });
+        },
+        close() {
+          try {
+            nodeFs.closeSync(fd);
+          } catch {
+            // a close race during teardown is noise
+          }
+        },
+      };
     } catch {
       nodeFs.closeSync(fd);
       return null;
     }
-    return {
-      size,
-      read(buffer, position) {
-        return new Promise<number>((resolve, reject) => {
-          nodeFs.read(
-            fd,
-            buffer,
-            0,
-            buffer.byteLength,
-            position,
-            (err, bytesRead) => (err ? reject(err) : resolve(bytesRead)),
-          );
-        });
-      },
-      close() {
-        try {
-          nodeFs.closeSync(fd);
-        } catch {
-          // a close race during teardown is noise
-        }
-      },
-    };
   },
 };
 
@@ -171,14 +168,6 @@ export const realLocalIo: LocalIo = {
 interface TransferRecord extends SftpTransfer {
   canceled?: boolean;
 }
-
-/** The clone the subprocess needs before handing a shared Buffer to a stream write (ssh2's
- *  read fills a page buffer we reuse; the writer needs its own bytes). */
-const pageFor = (buffer: Buffer, byteLength: number): Buffer => {
-  const out = Buffer.allocUnsafe(byteLength);
-  buffer.copy(out, 0, 0, byteLength);
-  return out;
-};
 
 const ENOENT_RE = /no such file|No such|ENOENT|does not exist/i;
 const isNotFound = (err: Error): boolean => ENOENT_RE.test(err.message);
@@ -291,7 +280,8 @@ export function createSftpService(deps: SftpDeps): SftpService {
   /** The shared wire shape without the private cancel flag. */
   const snapshotPrivate = (): SftpTransferSnapshot =>
     [...transfers.values()].map((record) => {
-      const { canceled: _canceled, ...rest } = record;
+      const rest = { ...record };
+      delete rest.canceled;
       return rest;
     });
 
@@ -321,12 +311,18 @@ export function createSftpService(deps: SftpDeps): SftpService {
       }
       const got = deps.connectionManager.withClient(serverId, (rpc) => {
         if (!rpc.sftp) {
-          resolve({ ok: false, error: "The pooled connection cannot open SFTP channels." });
+          resolve({
+            ok: false,
+            error: "The pooled connection cannot open SFTP channels.",
+          });
           return true;
         }
         rpc.sftp((err, sftp) => {
           if (err || !sftp) {
-            resolve({ ok: false, error: err?.message ?? "Could not open the SFTP channel." });
+            resolve({
+              ok: false,
+              error: err?.message ?? "Could not open the SFTP channel.",
+            });
             return;
           }
           resolve({ ok: true, channel: sftp });
@@ -359,9 +355,11 @@ export function createSftpService(deps: SftpDeps): SftpService {
   const statOf = (channel: SftpChannel, path: string): Promise<SftpAttrs> =>
     new Promise<SftpAttrs>((resolve, reject) => {
       try {
-        channel.stat(path, (err, attrs) => (err ? reject(err) : resolve(attrs)));
+        channel.stat(path, (err, attrs) =>
+          err ? reject(err) : resolve(attrs),
+        );
       } catch (err) {
-        reject(err as Error);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
 
@@ -371,9 +369,11 @@ export function createSftpService(deps: SftpDeps): SftpService {
   ): Promise<SftpListEntry[]> =>
     new Promise<SftpListEntry[]>((resolve, reject) => {
       try {
-        channel.readdir(path, (err, list) => (err ? reject(err) : resolve(list)));
+        channel.readdir(path, (err, list) =>
+          err ? reject(err) : resolve(list),
+        );
       } catch (err) {
-        reject(err as Error);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
 
@@ -388,7 +388,7 @@ export function createSftpService(deps: SftpDeps): SftpService {
           err ? reject(err) : resolve(handle),
         );
       } catch (err) {
-        reject(err as Error);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
 
@@ -405,7 +405,7 @@ export function createSftpService(deps: SftpDeps): SftpService {
           err ? reject(err) : resolve(n),
         );
       } catch (err) {
-        reject(err as Error);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
 
@@ -417,15 +417,23 @@ export function createSftpService(deps: SftpDeps): SftpService {
   ): Promise<number> =>
     new Promise<number>((resolve, reject) => {
       try {
-        channel.write(handle, buffer, 0, buffer.byteLength, position, (err, n) =>
-          err ? reject(err) : resolve(n),
+        channel.write(
+          handle,
+          buffer,
+          0,
+          buffer.byteLength,
+          position,
+          (err, n) => (err ? reject(err) : resolve(n)),
         );
       } catch (err) {
-        reject(err as Error);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
 
-  const closeHandle = async (channel: SftpChannel, handle: unknown): Promise<void> => {
+  const closeHandle = async (
+    channel: SftpChannel,
+    handle: unknown,
+  ): Promise<void> => {
     try {
       await new Promise<void>((resolve, reject) => {
         channel.close(handle, (err) => (err ? reject(err) : resolve()));
@@ -440,7 +448,7 @@ export function createSftpService(deps: SftpDeps): SftpService {
       try {
         channel.mkdir(path, (err) => (err ? reject(err) : resolve()));
       } catch (err) {
-        reject(err as Error);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
 
@@ -453,7 +461,7 @@ export function createSftpService(deps: SftpDeps): SftpService {
       try {
         channel.rename(from, to, (err) => (err ? reject(err) : resolve()));
       } catch (err) {
-        reject(err as Error);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
 
@@ -462,7 +470,7 @@ export function createSftpService(deps: SftpDeps): SftpService {
       try {
         channel.unlink(path, (err) => (err ? reject(err) : resolve()));
       } catch (err) {
-        reject(err as Error);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
 
@@ -471,19 +479,18 @@ export function createSftpService(deps: SftpDeps): SftpService {
       try {
         channel.rmdir(path, (err) => (err ? reject(err) : resolve()));
       } catch (err) {
-        reject(err as Error);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
 
-  const realpathOf = (
-    channel: SftpChannel,
-    path: string,
-  ): Promise<string> =>
+  const realpathOf = (channel: SftpChannel, path: string): Promise<string> =>
     new Promise<string>((resolve, reject) => {
       try {
-        channel.realpath(path, (err, abs) => (err ? reject(err) : resolve(abs)));
+        channel.realpath(path, (err, abs) =>
+          err ? reject(err) : resolve(abs),
+        );
       } catch (err) {
-        reject(err as Error);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
 
@@ -524,7 +531,7 @@ export function createSftpService(deps: SftpDeps): SftpService {
   ): Promise<void> => {
     if (seen.has(path)) return;
     seen.add(path);
-    let attrs: SftpAttrs | null = null;
+    let attrs: SftpAttrs;
     try {
       attrs = await statOf(channel, path);
     } catch (err) {
@@ -532,7 +539,7 @@ export function createSftpService(deps: SftpDeps): SftpService {
       return;
     }
     if (attrs.isDirectory()) {
-      let list: SftpListEntry[] = [];
+      let list: SftpListEntry[];
       try {
         list = await readdirOf(channel, path);
       } catch (err) {
@@ -560,7 +567,6 @@ export function createSftpService(deps: SftpDeps): SftpService {
       warnings.push(`${path} — ${(err as Error).message}`);
     }
   };
-
 
   /** The shared transfer tail: done-status + a max() so a late ack can't shrink progress. */
   const finishTransfer = (record: TransferRecord, bytes: number): void => {
@@ -594,7 +600,7 @@ export function createSftpService(deps: SftpDeps): SftpService {
         schedulePush();
         return;
       }
-      let bytes = 0;
+      let bytes;
       try {
         bytes = await opts.page(position);
       } catch (err) {
@@ -645,7 +651,6 @@ export function createSftpService(deps: SftpDeps): SftpService {
     record: TransferRecord,
     remotePath: string,
     localPath: string,
-    _size: number,
   ): Promise<void> => {
     let handle: unknown;
     try {
@@ -722,8 +727,9 @@ export function createSftpService(deps: SftpDeps): SftpService {
         drain: async () => {
           // ssh2's channel-side flush is implicit in the final read offset; nothing to drain.
         },
-        cleanup: async () => {
+        cleanup: () => {
           reader.close();
+          return Promise.resolve();
         },
       });
     } finally {
@@ -819,7 +825,9 @@ export function createSftpService(deps: SftpDeps): SftpService {
             };
           }
           const list = await readdirOf(channel, dir);
-          const entries = list.map((item) => entryFrom(item.filename, item.attrs));
+          const entries = list.map((item) =>
+            entryFrom(item.filename, item.attrs),
+          );
           return { ok: true, entries, path: dir };
         },
       );
@@ -1013,8 +1021,11 @@ export function createSftpService(deps: SftpDeps): SftpService {
           continue;
         }
         const base = saveName ?? remoteBasename(path).replace(/\0/g, "_");
-        const localPath = collateLocalName(toDir, base, (candidate) =>
-          localIo.existsPath(candidate) || reservedNames.has(candidate),
+        const localPath = collateLocalName(
+          toDir,
+          base,
+          (candidate) =>
+            localIo.existsPath(candidate) || reservedNames.has(candidate),
         );
         reservedNames.add(localPath);
         const record: TransferRecord = {
@@ -1029,7 +1040,7 @@ export function createSftpService(deps: SftpDeps): SftpService {
           status: "active",
         };
         registerTransfer(record);
-        void startDownload(channel, record, path, localPath, attrs.size);
+        void startDownload(channel, record, path, localPath);
       }
       return { ok: true, skippedLocal };
     },
@@ -1111,8 +1122,12 @@ export function createSftpService(deps: SftpDeps): SftpService {
       const channel = borrowed.channel;
       let skippedLocal = 0;
       for (const item of items) {
-        const from = typeof item?.from === "string" ? normalizeRemotePath(item.from) : null;
-        const to = typeof item?.to === "string" ? normalizeRemotePath(item.to) : null;
+        const from =
+          typeof item?.from === "string"
+            ? normalizeRemotePath(item.from)
+            : null;
+        const to =
+          typeof item?.to === "string" ? normalizeRemotePath(item.to) : null;
         if (!from || !to || from === to) {
           skippedLocal++;
           continue;
@@ -1166,7 +1181,8 @@ export function createSftpService(deps: SftpDeps): SftpService {
      *  and the (now dead) channel evicts so subsequent ops re-dial. */
     noteDown(serverId) {
       for (const record of transfers.values()) {
-        if (record.serverId !== serverId || record.status !== "active") continue;
+        if (record.serverId !== serverId || record.status !== "active")
+          continue;
         failTransfer(record, "Connection lost.", true);
       }
       evict(serverId);

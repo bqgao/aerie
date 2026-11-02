@@ -45,9 +45,7 @@ export interface SshClientRpc {
    *  the SAME pooled client as shells/tunnels/execs. Optional at the seam (same pattern as
    *  shell): a pool-level fake that never opens subsystem channels stays valid; the real factory
    *  always provides it, and callers guard for absence. */
-  sftp?(
-    cb: (err: Error | undefined, sftp: SftpChannel | null) => void,
-  ): void;
+  sftp?(cb: (err: Error | undefined, sftp: SftpChannel | null) => void): void;
 }
 
 /** The shell-window request the ssh terminal sends (narrowed from ssh2's PseudoTerminalOptions):
@@ -109,12 +107,22 @@ export interface SftpChannel {
     path: string,
     cb: (err: Error | undefined, list: SftpListEntry[]) => void,
   ): void;
-  stat(path: string, cb: (err: Error | undefined, attrs: SftpAttrs) => void): void;
+  stat(
+    path: string,
+    cb: (err: Error | undefined, attrs: SftpAttrs) => void,
+  ): void;
   mkdir(path: string, cb: (err: Error | undefined) => void): void;
-  rename(srcPath: string, destPath: string, cb: (err: Error | undefined) => void): void;
+  rename(
+    srcPath: string,
+    destPath: string,
+    cb: (err: Error | undefined) => void,
+  ): void;
   unlink(filename: string, cb: (err: Error | undefined) => void): void;
   rmdir(path: string, cb: (err: Error | undefined) => void): void;
-  realpath(path: string, cb: (err: Error | undefined, abspath: string) => void): void;
+  realpath(
+    path: string,
+    cb: (err: Error | undefined, abspath: string) => void,
+  ): void;
   /** A client-side channel teardown (closes any open handles with "channel closed"-style errors). */
   end(): void;
 }

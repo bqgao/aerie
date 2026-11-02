@@ -10,16 +10,14 @@ import {
   pasteTargets,
   reduceSelection,
   renameSuggestion,
+  SftpClipboard,
   sortEntries,
   type SelectionEdit,
-  type SftpSortKey,
 } from "../../src/renderer/src/shell/sftp/sftp-model";
 import {
   $sftpClipboard,
   $sftpServerId,
-  setSftpCwd,
   setSftpServer,
-  sftpContextOf,
 } from "../../src/renderer/src/shell/sftp/sftp-store";
 import type { SftpEntry } from "@shared/sftp";
 
@@ -59,15 +57,19 @@ describe("sortEntries (dirs first both directions)", () => {
   });
 
   it("size and mtime sorts break ties by name", () => {
-    const bySize = sortEntries(rows.filter((r) => r.kind === "file"), "size", false);
+    const bySize = sortEntries(
+      rows.filter((r) => r.kind === "file"),
+      "size",
+      false,
+    );
     expect(bySize.map((e) => e.name)).toEqual(["alpha.txt", "zeta.txt"]);
     // Dir rank DOMINATES both directions: file-vs-dir keeps the dir ahead.
-    expect(compareEntries(entry("b", "file"), entry("a", "dir"), "name", -1)).toBe(
-      1,
-    );
-    expect(compareEntries(entry("a", "dir"), entry("b", "file"), "name", 1)).toBe(
-      -1,
-    );
+    expect(
+      compareEntries(entry("b", "file"), entry("a", "dir"), "name", -1),
+    ).toBe(1);
+    expect(
+      compareEntries(entry("a", "dir"), entry("b", "file"), "name", 1),
+    ).toBe(-1);
   });
 });
 
@@ -75,9 +77,13 @@ describe("reduceSelection (⌘/Shift semantics over display order)", () => {
   const rows = ["a", "b", "c", "d", "e"];
 
   it("plain click replaces; toggle flips one; clears empties", () => {
-    const run = (state: ReadonlySet<string>, edit: SelectionEdit): ReadonlySet<string> =>
-      reduceSelection(state, rows, edit);
-    expect(run(new Set(), { op: "set-one", name: "c" })).toEqual(new Set(["c"]));
+    const run = (
+      state: ReadonlySet<string>,
+      edit: SelectionEdit,
+    ): ReadonlySet<string> => reduceSelection(state, rows, edit);
+    expect(run(new Set(), { op: "set-one", name: "c" })).toEqual(
+      new Set(["c"]),
+    );
     const one = new Set(["c"]);
     expect(run(one, { op: "toggle", name: "c" })).toEqual(new Set());
     expect(run(one, { op: "toggle", name: "d" })).toEqual(new Set(["c", "d"]));
@@ -99,9 +105,9 @@ describe("reduceSelection (⌘/Shift semantics over display order)", () => {
 
   it("⌘A selects everything displayed; anchors missing from the list degrade to the hit", () => {
     expect([...reduceSelection(new Set(), rows, { op: "all" })]).toEqual(rows);
-    expect(reduceSelection(new Set(), rows, { op: "range", from: "ghost", to: "b" })).toEqual(
-      new Set(["b"]),
-    );
+    expect(
+      reduceSelection(new Set(), rows, { op: "range", from: "ghost", to: "b" }),
+    ).toEqual(new Set(["b"]));
   });
 });
 
@@ -135,12 +141,21 @@ describe("pasteTargets (copy keeps; cut clears; conflicts split)", () => {
 describe("applyConflict / renameSuggestion", () => {
   it("overwrite keeps the target, skip drops, rename suffixes", () => {
     const taken = new Set(["file.txt", "file-2.txt"]);
-    expect(applyConflict("file.txt", "/x/file.txt", "overwrite", (c) => taken.has(c))).toEqual({
+    expect(
+      applyConflict("file.txt", "/x/file.txt", "overwrite", (c) =>
+        taken.has(c),
+      ),
+    ).toEqual({
       action: "overwrite",
       target: "/x/file.txt",
     });
-    expect(applyConflict("file.txt", "/x/file.txt", "skip", (c) => taken.has(c)).action).toBe("skip");
-    expect(applyConflict("file.txt", "/x/file.txt", "rename", (c) => taken.has(c))).toEqual({
+    expect(
+      applyConflict("file.txt", "/x/file.txt", "skip", (c) => taken.has(c))
+        .action,
+    ).toBe("skip");
+    expect(
+      applyConflict("file.txt", "/x/file.txt", "rename", (c) => taken.has(c)),
+    ).toEqual({
       action: "rename",
       target: "/x/file-3.txt",
     });
@@ -148,7 +163,9 @@ describe("applyConflict / renameSuggestion", () => {
 
   it("renameSuggestion is the conflict candidate helper (dotfile-safe)", () => {
     const taken = new Set([".profile"]);
-    expect(renameSuggestion(".profile", (c) => taken.has(c))).toBe(".profile-2");
+    expect(renameSuggestion(".profile", (c) => taken.has(c))).toBe(
+      ".profile-2",
+    );
   });
 });
 

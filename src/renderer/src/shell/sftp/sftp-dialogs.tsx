@@ -18,7 +18,11 @@ const DIALOG_CONFIRM = cx(
   focusRing,
   `${DIALOG_ACTION} bg-primary text-ink-950 ring-primary/40 hover:bg-primary-bright`,
 );
-const DIALOG_PLAIN = cx(focusRing, DIALOG_ACTION, "text-fg-muted ring-ink-700 hover:text-fg");
+const DIALOG_PLAIN = cx(
+  focusRing,
+  DIALOG_ACTION,
+  "text-fg-muted ring-ink-700 hover:text-fg",
+);
 
 export type ConflictChoice = "overwrite" | "skip" | "rename";
 
@@ -41,7 +45,9 @@ export function ConflictDialog({
 }) {
   const { t } = useI18n();
   const [index, setIndex] = useState(0);
-  const [resolution, setResolution] = useState<Record<string, ConflictChoice>>({});
+  const [resolution, setResolution] = useState<Record<string, ConflictChoice>>(
+    {},
+  );
   const applyOne = (choice: ConflictChoice): void => {
     const next = { ...resolution, [names[index]]: choice };
     setResolution(next);
@@ -60,7 +66,11 @@ export function ConflictDialog({
   const name = names[index];
   const candidate = renameSuggestion(name, exists);
   return (
-    <ModalShell labelledBy="sftp-conflict-title" widthClass="w-[22rem]" onClose={() => onDone(null)}>
+    <ModalShell
+      labelledBy="sftp-conflict-title"
+      widthClass="w-[22rem]"
+      onClose={() => onDone(null)}
+    >
       <div id="sftp-conflict-title" className="text-subhead font-semibold">
         {title}
       </div>
@@ -73,16 +83,32 @@ export function ConflictDialog({
         </p>
       )}
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button className={DIALOG_PLAIN} onClick={() => applyAll("skip")} type="button">
+        <button
+          className={DIALOG_PLAIN}
+          onClick={() => applyAll("skip")}
+          type="button"
+        >
           {t.sftp.conflict.skipAll}
         </button>
-        <button className={DIALOG_PLAIN} onClick={() => applyOne("rename")} type="button">
+        <button
+          className={DIALOG_PLAIN}
+          onClick={() => applyOne("rename")}
+          type="button"
+        >
           {t.sftp.conflict.renameShort(candidate)}
         </button>
-        <button className={DIALOG_PLAIN} onClick={() => applyAll("overwrite")} type="button">
+        <button
+          className={DIALOG_PLAIN}
+          onClick={() => applyAll("overwrite")}
+          type="button"
+        >
           {t.sftp.conflict.overwriteAll}
         </button>
-        <button className={DIALOG_CONFIRM} onClick={() => applyOne("skip")} type="button">
+        <button
+          className={DIALOG_CONFIRM}
+          onClick={() => applyOne("skip")}
+          type="button"
+        >
           {t.sftp.conflict.skip}
         </button>
       </div>
@@ -112,7 +138,11 @@ export function NamePromptDialog({
     if (name) onConfirm(name);
   };
   return (
-    <ModalShell labelledBy="sftp-name-title" widthClass="w-[20rem]" onClose={onCancel}>
+    <ModalShell
+      labelledBy="sftp-name-title"
+      widthClass="w-[20rem]"
+      onClose={onCancel}
+    >
       <div id="sftp-name-title" className="text-subhead font-semibold">
         {title}
       </div>

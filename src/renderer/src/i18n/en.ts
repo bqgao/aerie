@@ -468,7 +468,8 @@ export const en = {
       name: "Name",
       size: "Size",
       mtime: "Modified",
-      sortDirectionLabel: (asc: boolean): string => (asc ? "ascending" : "descending"),
+      sortDirectionLabel: (asc: boolean): string =>
+        asc ? "ascending" : "descending",
     },
     menu: {
       open: "Open",
@@ -488,12 +489,14 @@ export const en = {
       newFolderDefault: "untitled-folder",
     },
     confirm: {
-      deleteTitle: (count: number) => `Delete ${count} item${count === 1 ? "" : "s"}?`,
-      deleteBody: (count: number) => `Removes ${count} item${count === 1 ? "" : "s"} from the server.`,
+      deleteTitle: (count: number) =>
+        `Delete ${count} item${count === 1 ? "" : "s"}?`,
+      deleteBody: (count: number) =>
+        `Removes ${count} item${count === 1 ? "" : "s"} from the server.`,
       deleteFolder: "This deletes the folder and all its contents.",
     },
     conflict: {
-      title: 'A name already exists',
+      title: "A name already exists",
       uploadTitle: "Upload conflict",
       pasteTitle: "Paste conflict",
       uploadBody: "The destination folder already has an entry with this name.",

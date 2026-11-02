@@ -70,7 +70,10 @@ export function remotePathSegments(path: string): string[] {
 
 /** A `name-2`-style auto-suffix for rename-conflicts: file.ext → file-2.ext. Dot-leading names
  *  ("dotfiles") never split their ext (".profile-2"); un-adorned names suffix bare. */
-export function conflictRenameCandidate(name: string, exists: (candidate: string) => boolean): string {
+export function conflictRenameCandidate(
+  name: string,
+  exists: (candidate: string) => boolean,
+): string {
   const dot = name.lastIndexOf(".");
   const stem = dot > 0 ? name.slice(0, dot) : name;
   const ext = dot > 0 ? name.slice(dot) : "";

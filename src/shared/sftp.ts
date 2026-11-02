@@ -41,7 +41,11 @@ export interface SftpEntry {
 
 export type SftpListResult =
   | { ok: true; entries: SftpEntry[]; path: string }
-  | { ok: false; error: string; /** ssh2 answered "no such path" — the NOT_FOUND breadcrumb case. */ notFound?: boolean };
+  | {
+      ok: false;
+      error: string;
+      /** ssh2 answered "no such path" — the NOT_FOUND breadcrumb case. */ notFound?: boolean;
+    };
 
 export type SftpStatResult =
   | { ok: true; entry: SftpEntry }
@@ -52,9 +56,7 @@ export type SftpOk = { ok: true } | SftpFailure;
 
 /** Delete: directories are recursive with per-child errors COLLECTED (DESIGN_NOTES F note 5) —
  *  a partial delete still answers ok, carrying what failed under `warnings`. */
-export type SftpDeleteResult =
-  | { ok: true; warnings: string[] }
-  | SftpFailure;
+export type SftpDeleteResult = { ok: true; warnings: string[] } | SftpFailure;
 
 /** The queued-transfer ops (download/upload): `skippedLocal` counts in-band skips (vanished/
  *  unreadable local file, a directory in a files-only pass, a non-overwrite collision); a UI
@@ -113,16 +115,10 @@ export interface SftpApi {
   /** Create an empty remote file (New File…). */
   createFile(serverId: string, path: string): Promise<SftpOk>;
   rename(serverId: string, from: string, to: string): Promise<SftpOk>;
-  delete(
-    serverId: string,
-    paths: string[],
-  ): Promise<SftpDeleteResult>;
+  delete(serverId: string, paths: string[]): Promise<SftpDeleteResult>;
   /** Download `remotePaths` — main shows the native save dialog (single) or folder-picker
    *  (multi), then registers + starts chunked transfers. Progress arrives via SFTP.event. */
-  download(
-    serverId: string,
-    remotePaths: string[],
-  ): Promise<SftpQueuedResult>;
+  download(serverId: string, remotePaths: string[]): Promise<SftpQueuedResult>;
   /** Upload local paths into remote `dir`. The renderer resolves conflict policy FIRST (stat
    *  probes or the cached list) and passes `overwrite` for confirmed collisions + `renameAs`
    *  (localPath → remote name) for the Rename choice. Empty `localPaths` opens the native

@@ -41,10 +41,16 @@ export function setSftpServer(id: string | null): void {
 }
 
 export function sftpContextOf(id: string): SftpServerContext {
-  return $sftpContext.get()[id] ?? { cwd: "/", cwdNames: new Set(), home: null };
+  return (
+    $sftpContext.get()[id] ?? { cwd: "/", cwdNames: new Set(), home: null }
+  );
 }
 
-export function setSftpCwd(id: string, cwd: string, names: Iterable<string>): void {
+export function setSftpCwd(
+  id: string,
+  cwd: string,
+  names: Iterable<string>,
+): void {
   const contexts = $sftpContext.get();
   $sftpContext.set({
     ...contexts,
@@ -65,9 +71,16 @@ export function setSftpHome(id: string, home: string): void {
 }
 
 /** Keep the names cache honest after in-place mutations (mkdir/rename/delete/paste settle). */
-export function refreshCwdNames(id: string, entries: readonly SftpEntry[]): void {
+export function refreshCwdNames(
+  id: string,
+  entries: readonly SftpEntry[],
+): void {
   const ctx = sftpContextOf(id);
-  setSftpCwd(id, ctx.cwd, entries.map((e) => e.name));
+  setSftpCwd(
+    id,
+    ctx.cwd,
+    entries.map((e) => e.name),
+  );
 }
 
 /** The clipboard's write path (paste/cut/copy set it; a paste clears on success). */

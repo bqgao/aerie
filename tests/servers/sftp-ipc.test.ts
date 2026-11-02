@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { SFTP } from "../../src/shared/sftp";
+import { SFTP, type SftpTransferSnapshot } from "../../src/shared/sftp";
 import type { SftpService } from "../../src/main/servers/sftp-service";
 
 // Same electron mock shape as tests/servers/servers-ipc.test.ts and tests/terminal/ssh-ipc.test.ts:
@@ -22,7 +22,8 @@ vi.mock("electron", () => ({
   ipcMain: {
     handle: (channel: string, fn: (...a: unknown[]) => unknown) =>
       handlers.set(channel, fn),
-    on: (channel: string, fn: (...a: unknown[]) => void) => onHandlers.set(channel, fn),
+    on: (channel: string, fn: (...a: unknown[]) => void) =>
+      onHandlers.set(channel, fn),
     removeAllListeners: (channel: string) => onHandlers.delete(channel),
     removeHandler: (channel: string) => handlers.delete(channel),
   },
@@ -34,18 +35,24 @@ import { registerSftpIpc } from "../../src/main/servers/sftp-ipc";
 /** Every service method is a vi.fn with a sane never-reject default; tests assert WHICH
  *  handlers route and with what shapes, not the service's logic (that's sftp-service's job). */
 const serviceMock: SftpService = {
-  list: vi.fn(() => Promise.resolve({ ok: true, entries: [], path: "/x" })),
-  stat: vi.fn(() => Promise.resolve({ ok: false, error: "no" })),
-  home: vi.fn(() => Promise.resolve({ ok: true, path: "/home" })),
-  mkdir: vi.fn(() => Promise.resolve({ ok: true })),
-  createFile: vi.fn(() => Promise.resolve({ ok: true })),
-  rename: vi.fn(() => Promise.resolve({ ok: true })),
-  delete: vi.fn(() => Promise.resolve({ ok: true, warnings: [] })),
-  download: vi.fn(() => Promise.resolve({ ok: true, skippedLocal: 0 })),
-  upload: vi.fn(() => Promise.resolve({ ok: true, skippedLocal: 0 })),
-  copy: vi.fn(() => Promise.resolve({ ok: true, skippedLocal: 0 })),
+  list: vi.fn(() =>
+    Promise.resolve({ ok: true as const, entries: [], path: "/x" }),
+  ),
+  stat: vi.fn(() => Promise.resolve({ ok: false as const, error: "no" })),
+  home: vi.fn(() => Promise.resolve({ ok: true as const, path: "/home" })),
+  mkdir: vi.fn(() => Promise.resolve({ ok: true as const })),
+  createFile: vi.fn(() => Promise.resolve({ ok: true as const })),
+  rename: vi.fn(() => Promise.resolve({ ok: true as const })),
+  delete: vi.fn(() =>
+    Promise.resolve({ ok: true as const, warnings: [] as string[] }),
+  ),
+  download: vi.fn(() =>
+    Promise.resolve({ ok: true as const, skippedLocal: 0 }),
+  ),
+  upload: vi.fn(() => Promise.resolve({ ok: true as const, skippedLocal: 0 })),
+  copy: vi.fn(() => Promise.resolve({ ok: true as const, skippedLocal: 0 })),
   cancel: vi.fn(),
-  transfers: vi.fn(() => Promise.resolve([])),
+  transfers: vi.fn((): SftpTransferSnapshot => []),
   setPush: vi.fn(),
   noteDown: vi.fn(),
   disposeAll: vi.fn(),
@@ -92,10 +99,16 @@ describe("registerSftpIpc", () => {
 
   it("delegates list/stat/home with normalized guards: bad input answers in-band without the service", async () => {
     wire();
-    await expect(call(SFTP.list, "", "/x")).resolves.toMatchObject({ ok: false });
-    await expect(call(SFTP.list, "srv-1", 42)).resolves.toMatchObject({ ok: false });
+    await expect(call(SFTP.list, "", "/x")).resolves.toMatchObject({
+      ok: false,
+    });
+    await expect(call(SFTP.list, "srv-1", 42)).resolves.toMatchObject({
+      ok: false,
+    });
     expect(serviceMock.list).not.toHaveBeenCalled();
-    await expect(call(SFTP.rename, "srv-1", "/a", 42)).resolves.toMatchObject({ ok: false });
+    await expect(call(SFTP.rename, "srv-1", "/a", 42)).resolves.toMatchObject({
+      ok: false,
+    });
     expect(serviceMock.rename).not.toHaveBeenCalled();
     await expect(call(SFTP.list, "srv-1", "/x")).resolves.toMatchObject({}); // passthrough service result
     expect(serviceMock.list).toHaveBeenCalledWith("srv-1", "/x");
@@ -111,14 +124,27 @@ describe("registerSftpIpc", () => {
     });
     expect(dialogCalls.save).toHaveBeenCalled();
     expect(serviceMock.download).not.toHaveBeenCalled();
-    dialogCalls.save.mockResolvedValue({ canceled: false, filePath: "/tmp/dl/a-rename.txt" });
-    await expect(call(SFTP.download, "srv-1", ["/x/a.txt"])).resolves.toMatchObject({ ok: true });
-    expect(serviceMock.download).toHaveBeenCalledWith("srv-1", ["/x/a.txt"], "/tmp/dl", "/tmp/dl/a-rename.txt");
+    dialogCalls.save.mockResolvedValue({
+      canceled: false,
+      filePath: "/tmp/dl/a-rename.txt",
+    });
+    await expect(
+      call(SFTP.download, "srv-1", ["/x/a.txt"]),
+    ).resolves.toMatchObject({ ok: true });
+    expect(serviceMock.download).toHaveBeenCalledWith(
+      "srv-1",
+      ["/x/a.txt"],
+      "/tmp/dl",
+      "/tmp/dl/a-rename.txt",
+    );
   });
 
   it("download uses the folder picker for a multi-selection", async () => {
     wire();
-    dialogCalls.open.mockResolvedValue({ canceled: false, filePaths: ["/tmp/dl"] });
+    dialogCalls.open.mockResolvedValue({
+      canceled: false,
+      filePaths: ["/tmp/dl"],
+    });
     await expect(
       call(SFTP.download, "srv-1", ["/x/a.txt", "/x/b.txt"]),
     ).resolves.toMatchObject({ ok: true });
@@ -151,7 +177,9 @@ describe("registerSftpIpc", () => {
   it("copy/delete/cancel/transfers ride straight through; the push mirrors the service", async () => {
     wire();
     await call(SFTP.copy, "srv-1", ["", 42, { from: "/a", to: "/b" }]);
-    expect(serviceMock.copy).toHaveBeenCalledWith("srv-1", [{ from: "/a", to: "/b" }]);
+    expect(serviceMock.copy).toHaveBeenCalledWith("srv-1", [
+      { from: "/a", to: "/b" },
+    ]);
     await call(SFTP.deleteFn, "srv-1", ["/x", 42]);
     expect(serviceMock.delete).toHaveBeenCalledWith("srv-1", ["/x"]);
     fire(SFTP.cancel, "xfer-1");
@@ -162,9 +190,9 @@ describe("registerSftpIpc", () => {
 
   it("the transfer push rides window.webContents.send with the snapshot only", async () => {
     wire();
-    const push = (serviceMock.setPush as unknown as Mock).mock.calls.at(-1)?.[0] as
-      | ((snapshot: unknown) => void)
-      | undefined;
+    const push = (serviceMock.setPush as unknown as Mock).mock.calls.at(
+      -1,
+    )?.[0] as ((snapshot: unknown) => void) | undefined;
     expect(push).toBeTruthy();
     push?.([{ id: "t1" }]);
     expect(sendCalls.get(SFTP.event)).toHaveLength(1);

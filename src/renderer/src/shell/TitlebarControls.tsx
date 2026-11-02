@@ -40,7 +40,6 @@ export function TitlebarControls({ hasSession }: { hasSession: boolean }) {
   const isFullscreen = useFullscreen();
   const leftOpen = useStore($paneOpen(CBW_LEFT_PANE_ID));
   const rightOpen = useStore($paneOpen(CBW_RIGHT_PANE_ID));
-  const sftpOpen = useStore($paneOpen(SFTP_PANE_ID));
   // The Files toggle only exists once at least one server is saved (the pane has a context).
   const serverId = useStore($serverProfiles)[0]?.id ?? null;
   const hasServers = serverId !== null;

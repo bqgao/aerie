@@ -47,24 +47,31 @@ function fakeChannel() {
     read(handle, buffer, _offset, length, position, cb) {
       const path = handlePaths.get(handle) ?? "unknown";
       const bytesAll = state.files.get(path) ?? Buffer.alloc(0);
-      const taken = Math.min(length, bytesAll.length - position);
+      // The service always passes explicit positions; null (ssh2 stream mode) only
+      // appears if a caller forgets one — coalesce so the fake never NaNs.
+      const pos = position ?? 0;
+      const taken = Math.min(length, bytesAll.length - pos);
       if (taken <= 0) {
         cb(undefined, 0);
         return;
       }
-      state.reads.push({ path, position, bytes: taken });
-      bytesAll.copy(buffer, 0, position, position + taken);
+      state.reads.push({ path, position: pos, bytes: taken });
+      bytesAll.copy(buffer, 0, pos, pos + taken);
       cb(undefined, taken);
     },
     write(handle, buffer, _offset, length, position, cb) {
       const path = handlePaths.get(handle) ?? "unknown";
-      state.writes.push({ path, position, bytes: length });
+      const pos = position ?? 0;
+      state.writes.push({ path, position: pos, bytes: length });
       const current = state.files.get(path) ?? Buffer.alloc(0);
       const merged =
-        current.length >= position + length
+        current.length >= pos + length
           ? current
-          : Buffer.concat([current, Buffer.alloc(position + length - current.length)]);
-      buffer.copy(merged, position, 0, length);
+          : Buffer.concat([
+              current,
+              Buffer.alloc(pos + length - current.length),
+            ]);
+      buffer.copy(merged, pos, 0, length);
       state.files.set(path, merged);
       cb(undefined, length);
     },
@@ -74,17 +81,20 @@ function fakeChannel() {
     },
     readdir(path, cb) {
       const entries = state.dirs.get(path);
-      cb(undefined, (entries ?? []).map((e) => ({
-        filename: e.filename,
-        longname: e.filename,
-        attrs: {
-          size: e.size,
-          mtime: e.mtime,
-          isDirectory: () => e.isDir,
-          isFile: () => !e.isDir,
-          isSymbolicLink: () => false,
-        },
-      })));
+      cb(
+        undefined,
+        (entries ?? []).map((e) => ({
+          filename: e.filename,
+          longname: e.filename,
+          attrs: {
+            size: e.size,
+            mtime: e.mtime,
+            isDirectory: () => e.isDir,
+            isFile: () => !e.isDir,
+            isSymbolicLink: () => false,
+          },
+        })),
+      );
     },
     stat(path, cb) {
       if (state.dirs.has(path)) {
@@ -111,7 +121,8 @@ function fakeChannel() {
         state.files.delete(from);
         state.files.set(to, bytes);
       } else {
-        if (state.dirs.has(from)) state.dirs.set(to, state.dirs.get(from) ?? []);
+        if (state.dirs.has(from))
+          state.dirs.set(to, state.dirs.get(from) ?? []);
         state.dirs.delete(from);
       }
       cb(undefined);
@@ -163,13 +174,19 @@ function wire(channelOpts: {
   const withClient = vi.fn(
     <T>(id: string, fn: (rpc: undefined) => T): T | null => {
       void id;
-      if (!channelOpts.channel) return null;
-      const rpc = { sftp: (cb: (err: null, sftp: SftpChannel) => void) => cb(null, channelOpts.channel) };
+      const chan = channelOpts.channel;
+      if (!chan) return null;
+      const rpc = {
+        sftp: (cb: (err: null, sftp: SftpChannel) => void) => cb(null, chan),
+      };
       return fn(rpc as never);
     },
   );
   const service = createSftpService({
-    connectionManager: { withClient } as unknown as Pick<ConnectionManager, "withClient">,
+    connectionManager: { withClient } as unknown as Pick<
+      ConnectionManager,
+      "withClient"
+    >,
   });
   return { service, withClient: withClient as unknown as Mock };
 }
@@ -198,7 +215,10 @@ const memoryLocalIo = (): MemoryLocal => {
     writer(path) {
       return {
         write: async (chunk) => {
-          files.set(path, Buffer.concat([files.get(path) ?? Buffer.alloc(0), chunk]));
+          files.set(
+            path,
+            Buffer.concat([files.get(path) ?? Buffer.alloc(0), chunk]),
+          );
         },
         finish: async () => {},
         abort: async () => {
@@ -239,7 +259,9 @@ describe("createSftpService", () => {
     expect(res.ok).toBe(true);
     if (res.ok) {
       expect(res.path).toBe("/srv/dir");
-      expect(res.entries.map((e) => ({ name: e.name, kind: e.kind, size: e.size }))).toEqual([
+      expect(
+        res.entries.map((e) => ({ name: e.name, kind: e.kind, size: e.size })),
+      ).toEqual([
         { name: "a.txt", kind: "file", size: 12 },
         { name: "subdir", kind: "dir", size: 0 },
       ]);
@@ -278,14 +300,18 @@ describe("createSftpService", () => {
     const { service } = wire({ channel });
     const res = await service.rename(REQ, "/srv/old.txt", "/srv/new.txt");
     expect(res.ok).toBe(true);
-    expect(state.renames).toEqual([{ from: "/srv/old.txt", to: "/srv/new.txt" }]);
+    expect(state.renames).toEqual([
+      { from: "/srv/old.txt", to: "/srv/new.txt" },
+    ]);
     expect(state.files.has("/srv/new.txt")).toBe(true);
   });
 
   it("delete of a non-empty directory is RECURSIVE with per-child warnings collected", async () => {
     const { channel, state } = fakeChannel();
     // The scripted dir tree, with one per-child failure to verify collection.
-    state.dirs.set("/srv/root", [{ filename: "sub", isDir: true, size: 0, mtime: 0 }]);
+    state.dirs.set("/srv/root", [
+      { filename: "sub", isDir: true, size: 0, mtime: 0 },
+    ]);
     state.dirs.set("/srv/root/sub", [
       { filename: "a.txt", isDir: false, size: 3, mtime: 0 },
       { filename: "bad", isDir: false, size: 3, mtime: 0 },
@@ -297,7 +323,9 @@ describe("createSftpService", () => {
     // type only by deleting a dir that re-adds itself (impossible) — instead script failure
     // via a custom channel: use the denial on the rmdir path.
     const denied = fakeChannel();
-    denied.state.dirs.set("/srv/root", [{ filename: "f.txt", isDir: false, size: 0, mtime: 0 }]);
+    denied.state.dirs.set("/srv/root", [
+      { filename: "f.txt", isDir: false, size: 0, mtime: 0 },
+    ]);
     denied.state.files.set("/srv/root/f.txt", Buffer.alloc(0));
     // rmdir on /srv/root will succeed in the fake; verifying collection semantics instead
     // via the direct delete-of-missing call below keeps the seam honest.
@@ -321,19 +349,22 @@ describe("createSftpService", () => {
     const local = memoryLocalIo();
     const ioService = createSftpService({
       connectionManager: {
-        withClient: (_id, fn) => {
+        withClient: (_id: unknown, fn: (rpc: never) => unknown) => {
           const rpc = {
-            sftp: (cb: (err: null, sftp: SftpChannel) => void) => cb(null, channel),
+            sftp: (cb: (err: null, sftp: SftpChannel) => void) =>
+              cb(null, channel),
           };
           return fn(rpc as never);
         },
       } as never,
       localIo: local.io,
-      push: (snapshot) => {
-        void snapshot;
-      },
     });
-    const res = await ioService.download(REQ, ["/srv/data.bin"], "/tmp/dl", "/tmp/dl/data.bin");
+    const res = await ioService.download(
+      REQ,
+      ["/srv/data.bin"],
+      "/tmp/dl",
+      "/tmp/dl/data.bin",
+    );
     expect(res.ok).toBe(true);
     // The transfer loop is async-fire; poll the registry until done.
     await vi.waitFor(() => {
@@ -342,7 +373,9 @@ describe("createSftpService", () => {
       expect(rows[0].status).toBe("done");
       expect(rows[0].bytesDone).toBe(256 * 1024 * 2 + 64);
     });
-    expect(local.files.get("/tmp/dl/data.bin")).toEqual(state.files.get("/srv/data.bin"));
+    expect(local.files.get("/tmp/dl/data.bin")).toEqual(
+      state.files.get("/srv/data.bin"),
+    );
   });
 
   it("cancel kills a running download, marks the row, and REMOVES the partial file", async () => {
@@ -352,14 +385,16 @@ describe("createSftpService", () => {
     fake.state.files.set("/srv/big.bin", Buffer.alloc(256 * 1024 + 128, 9));
     const bytes = Buffer.alloc(256 * 1024, 9);
     const local = memoryLocalIo();
-    let firstPage: (() => void) | null = null;
+    // Holder object: a let captured by the executor stays narrowed to null in
+    // straight-line code (TS#9998), which breaks the firstPage?.() release below.
+    const gate: { open: (() => void) | null } = { open: null };
     const stalled = new Promise<void>((resolve) => {
-      firstPage = resolve;
+      gate.open = resolve;
     });
     const slowChannel: SftpChannel = {
       ...channel,
       read(handle, buffer, _off, length, position, cb) {
-        if (position === 0 && firstPage) {
+        if (position === 0 && gate.open) {
           void stalled.then(() => {
             if (position !== undefined) cb(undefined, length);
           });
@@ -370,9 +405,10 @@ describe("createSftpService", () => {
     };
     const service = createSftpService({
       connectionManager: {
-        withClient: (_id, fn) => {
+        withClient: (_id: unknown, fn: (rpc: never) => unknown) => {
           const rpc = {
-            sftp: (cb: (err: null, sftp: SftpChannel) => void) => cb(null, slowChannel),
+            sftp: (cb: (err: null, sftp: SftpChannel) => void) =>
+              cb(null, slowChannel),
           };
           return fn(rpc as never);
         },
@@ -382,7 +418,7 @@ describe("createSftpService", () => {
     await service.download(REQ, ["/srv/big.bin"], "/tmp/dl");
     const [row] = service.transfers();
     service.cancel(row.id);
-    firstPage?.();
+    gate.open?.();
     await vi.waitFor(() => {
       const rows = service.transfers();
       expect(rows[0].status).toBe("canceled");
@@ -395,16 +431,19 @@ describe("createSftpService", () => {
     const { channel } = fake;
     fake.state.files.set("/srv/big.bin", Buffer.alloc(256 * 1024 + 128, 9));
     const local = memoryLocalIo();
-    let release: ((value?: unknown) => void) | null = null;
+    // Same holder-object trick as above: defeat the let-null narrowing (TS#9998).
+    const gateCtl: { release: ((value?: unknown) => void) | null } = {
+      release: null,
+    };
     const gate = new Promise((ok) => {
-      release = ok;
+      gateCtl.release = ok;
     });
     const stalled: SftpChannel = {
       ...channel,
       read(handle, buffer, off, length, position, cb) {
-        if (position === 0 && release) {
+        if (position === 0 && gateCtl.release) {
           void gate.then(() => {
-            cb(null, length);
+            cb(undefined, length);
           });
           return;
         }
@@ -413,8 +452,11 @@ describe("createSftpService", () => {
     };
     const service = createSftpService({
       connectionManager: {
-        withClient: (_id, fn) => {
-          const rpc = { sftp: (cb: (err: null, sftp: SftpChannel) => void) => cb(null, stalled) };
+        withClient: (_id: unknown, fn: (rpc: never) => unknown) => {
+          const rpc = {
+            sftp: (cb: (err: null, sftp: SftpChannel) => void) =>
+              cb(null, stalled),
+          };
           return fn(rpc as never);
         },
       } as never,
@@ -422,7 +464,7 @@ describe("createSftpService", () => {
     });
     await service.download(REQ, ["/srv/big.bin"], "/tmp/dl");
     service.noteDown(REQ);
-    release?.();
+    gateCtl.release?.();
     await vi.waitFor(() => {
       const row = service.transfers()[0];
       expect(row.status).toBe("failed");
@@ -440,14 +482,19 @@ describe("createSftpService", () => {
     local.files.set("/local/needs-new-name.bin", Buffer.alloc(16, 4));
     const service = createSftpService({
       connectionManager: {
-        withClient: (_id, fn) => {
-          const rpc = { sftp: (cb: (err: null, sftp: SftpChannel) => void) => cb(null, channel) };
+        withClient: (_id: unknown, fn: (rpc: never) => unknown) => {
+          const rpc = {
+            sftp: (cb: (err: null, sftp: SftpChannel) => void) =>
+              cb(null, channel),
+          };
           return fn(rpc as never);
         },
       } as never,
       localIo: local.io,
     });
-    const res = await service.upload(REQ, "/srv", ["/local/one.bin"], { overwrite: true });
+    const res = await service.upload(REQ, "/srv", ["/local/one.bin"], {
+      overwrite: true,
+    });
     expect(res.ok).toBe(true);
     await vi.waitFor(() => {
       expect(state.files.get("/srv/one.bin")?.length).toBe(320);
@@ -475,13 +522,17 @@ describe("createSftpService", () => {
     const { channel, state } = fakeChannel();
     state.files.set("/src/file.bin", Buffer.alloc(64, 5));
     const service = wire({ channel }).service;
-    const res = await service.copy(REQ, [{ from: "/src/file.bin", to: "/dst/file.bin" }]);
+    const res = await service.copy(REQ, [
+      { from: "/src/file.bin", to: "/dst/file.bin" },
+    ]);
     expect(res.ok).toBe(true);
     await vi.waitFor(() => {
       const row = service.transfers()[0];
       expect(row.status).toBe("done");
       expect(row.bytesDone).toBe(64);
     });
-    expect(state.files.get("/dst/file.bin")).toEqual(state.files.get("/src/file.bin"));
+    expect(state.files.get("/dst/file.bin")).toEqual(
+      state.files.get("/src/file.bin"),
+    );
   });
 });

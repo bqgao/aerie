@@ -85,14 +85,23 @@ declare module "ssh2" {
    *  `Error`s whose message carries the server's SFTP status text (ENOENT-style), never
    *  structured codes — the service matches message patterns, never ssh2 internals. */
   export class SftpClient {
-    open(path: string, flags: string, cb: (err: Error | undefined, handle: unknown) => void): void;
+    open(
+      path: string,
+      flags: string,
+      cb: (err: Error | undefined, handle: unknown) => void,
+    ): void;
     read(
       handle: unknown,
       buffer: Buffer,
       offset: number,
       length: number,
       position: number | null,
-      cb: (err: Error | undefined, bytesRead: number, buffer: Buffer, position: number | null) => void,
+      cb: (
+        err: Error | undefined,
+        bytesRead: number,
+        buffer: Buffer,
+        position: number | null,
+      ) => void,
     ): void;
     write(
       handle: unknown,
@@ -103,13 +112,26 @@ declare module "ssh2" {
       cb: (err: Error | undefined, written: number) => void,
     ): void;
     close(handle: unknown, cb: (err: Error | undefined) => void): void;
-    readdir(path: string, cb: (err: Error | undefined, list: FileEntryLike[]) => void): void;
-    stat(path: string, cb: (err: Error | undefined, attrs: EntryAttributes) => void): void;
+    readdir(
+      path: string,
+      cb: (err: Error | undefined, list: FileEntryLike[]) => void,
+    ): void;
+    stat(
+      path: string,
+      cb: (err: Error | undefined, attrs: EntryAttributes) => void,
+    ): void;
     mkdir(path: string, cb: (err: Error | undefined) => void): void;
-    rename(srcPath: string, destPath: string, cb: (err: Error | undefined) => void): void;
+    rename(
+      srcPath: string,
+      destPath: string,
+      cb: (err: Error | undefined) => void,
+    ): void;
     unlink(filename: string, cb: (err: Error | undefined) => void): void;
     rmdir(path: string, cb: (err: Error | undefined) => void): void;
-    realpath(path: string, cb: (err: Error | undefined, abspath: string) => void): void;
+    realpath(
+      path: string,
+      cb: (err: Error | undefined, abspath: string) => void,
+    ): void;
     /** Recover one channel cleanly (a client-side teardown that closes open handles). */
     end(): void;
   }

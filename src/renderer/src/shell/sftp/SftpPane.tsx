@@ -18,7 +18,11 @@ import { CustomSelect, type CustomSelectOption } from "../../ui/CustomSelect";
 import { Icon } from "../../ui/icons";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { useI18n } from "../../i18n";
-import { $serverProfiles, $serverStatus, refreshServers } from "../../shell-terminal/ssh-model";
+import {
+  $serverProfiles,
+  $serverStatus,
+  refreshServers,
+} from "../../shell-terminal/ssh-model";
 import {
   ConflictDialog,
   NamePromptDialog,
@@ -34,11 +38,9 @@ import {
   reduceSelection,
   renameSuggestion,
   sortEntries,
-  type SftpClipboard,
   type SftpSortKey,
 } from "./sftp-model";
 import {
-  SFTP_PANE_ID,
   $sftpClipboard,
   $sftpServerId,
   $sftpTransfers,
@@ -51,13 +53,6 @@ import {
 } from "./sftp-store";
 import { sftpTransferFraction } from "@shared/sftp";
 import type { SftpEntry, SftpTransfer } from "@shared/sftp";
-
-/** The unknown-conflict choice collapse type for the flows (from the dialogs module). */
-type ConflictChoice =
-  | "overwrite"
-  | "skip"
-  | "rename";
-
 /** The drag-MIME for in-pane moves, defined once for both the row source and the targets. */
 const SFTP_MOVE_MIME = "application/x-sftp-move";
 
@@ -103,7 +98,9 @@ export function SftpPane() {
     ReadonlyMap<string, readonly SftpEntry[]>
   >(new Map());
   const [openDirs, setOpenDirs] = useState<ReadonlySet<string>>(new Set());
-  const [treeLoading, setTreeLoading] = useState<ReadonlySet<string>>(new Set());
+  const [treeLoading, setTreeLoading] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const [pathBarEditing, setPathBarEditing] = useState(false);
   const [pathBarValue, setPathBarValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<readonly SftpEntry[] | null>(
@@ -145,7 +142,11 @@ export function SftpPane() {
     setListStatus("idle");
     setListError(null);
     setCwdState(res.path);
-    setSftpCwd(id, res.path, sorted.map((entry) => entry.name));
+    setSftpCwd(
+      id,
+      res.path,
+      sorted.map((entry) => entry.name),
+    );
     setSelection(new Set());
     setLastClick(null);
   };
@@ -183,7 +184,8 @@ export function SftpPane() {
   }, []);
 
   const serverOptions = useMemo<CustomSelectOption<string>[]>(() => {
-    const rank = (s: string): number => (s === "connected" ? 0 : s === "connecting" ? 1 : 2);
+    const rank = (s: string): number =>
+      s === "connected" ? 0 : s === "connecting" ? 1 : 2;
     return [...servers]
       .sort(
         (a, b) =>
@@ -214,7 +216,10 @@ export function SftpPane() {
     () => sortEntries(entries, sortKey, sortAsc),
     [entries, sortKey, sortAsc],
   );
-  const rowNames = useMemo(() => sortedEntries.map((entry) => entry.name), [sortedEntries]);
+  const rowNames = useMemo(
+    () => sortedEntries.map((entry) => entry.name),
+    [sortedEntries],
+  );
 
   /** The menu acts on the selection; with nothing selected it's just the background (new/up). */
   const menuTargets = useMemo(
@@ -257,25 +262,29 @@ export function SftpPane() {
       kind: "upload",
       names: colliding.map((p) => basenameRemoteish(p)),
       exists: (candidate) => names.has(candidate),
-      run: async (resolution) => {
-        const renames: Record<string, string> = {};
-        const proceeding = [...plain];
-        for (const p of colliding) {
-          const name = basenameRemoteish(p);
-          const choice = resolution?.perName[name] ?? "skip";
-          if (choice === "skip") continue;
-          if (choice === "rename") {
-            renames[p] = renameSuggestion(name, (candidate) => names.has(candidate));
-            continue;
+      run: (resolution) => {
+        void (async () => {
+          const renames: Record<string, string> = {};
+          const proceeding = [...plain];
+          for (const p of colliding) {
+            const name = basenameRemoteish(p);
+            const choice = resolution?.perName[name] ?? "skip";
+            if (choice === "skip") continue;
+            if (choice === "rename") {
+              renames[p] = renameSuggestion(name, (candidate) =>
+                names.has(candidate),
+              );
+              continue;
+            }
+            proceeding.push(p);
           }
-          proceeding.push(p);
-        }
-        if (proceeding.length === 0) return;
-        await window.api.sftp.upload(serverId, dir, proceeding, {
-          overwrite: true,
-          ...(Object.keys(renames).length > 0 ? { renameAs: renames } : {}),
-        });
-        void navigate(serverId, dir);
+          if (proceeding.length === 0) return;
+          await window.api.sftp.upload(serverId, dir, proceeding, {
+            overwrite: true,
+            ...(Object.keys(renames).length > 0 ? { renameAs: renames } : {}),
+          });
+          void navigate(serverId, dir);
+        })();
       },
     });
   };
@@ -318,7 +327,12 @@ export function SftpPane() {
 
   const onRowClick = (entry: SftpEntry, event: React.MouseEvent): void => {
     if (event.metaKey || event.ctrlKey) {
-      setSelection(reduceSelection(selection, rowNames, { op: "toggle", name: entry.name }));
+      setSelection(
+        reduceSelection(selection, rowNames, {
+          op: "toggle",
+          name: entry.name,
+        }),
+      );
       setLastClick(entry.name);
       return;
     }
@@ -336,7 +350,9 @@ export function SftpPane() {
       if (serverId) void navigate(serverId, joinRemoteFor(cwd, entry.name));
       return;
     }
-    setSelection(reduceSelection(selection, rowNames, { op: "set-one", name: entry.name }));
+    setSelection(
+      reduceSelection(selection, rowNames, { op: "set-one", name: entry.name }),
+    );
     setLastClick(entry.name);
   };
 
@@ -403,7 +419,9 @@ export function SftpPane() {
     const namesInTarget = sftpContextOf(serverId).cwdNames;
     const plan = pasteTargets(clipboard, cwd, namesInTarget);
     if (plan.pairs.length === 0 && plan.conflicts.length === 0) return;
-    const run = async (resolution: ConflictResolution | null): Promise<void> => {
+    const run = async (
+      resolution: ConflictResolution | null,
+    ): Promise<void> => {
       const pairs = [...plan.pairs];
       for (const conflict of plan.conflicts) {
         const name = basenameRemoteish(conflict.to);
@@ -414,7 +432,9 @@ export function SftpPane() {
             from: conflict.from,
             to: joinRemoteFor(
               cwd,
-              renameSuggestion(name, (candidate) => namesInTarget.has(candidate)),
+              renameSuggestion(name, (candidate) =>
+                namesInTarget.has(candidate),
+              ),
             ),
           });
           continue;
@@ -449,18 +469,27 @@ export function SftpPane() {
   };
 
   const runNewFolder = (): void => {
-    setDraft({ kind: "new-folder", path: cwd, initial: t.sftp.menu.newFolderDefault });
+    setDraft({
+      kind: "new-folder",
+      path: cwd,
+      initial: t.sftp.menu.newFolderDefault,
+    });
   };
 
   const runNewFile = (): void => {
-    setDraft({ kind: "new-file", path: cwd, initial: t.sftp.menu.newFileDefault });
+    setDraft({
+      kind: "new-file",
+      path: cwd,
+      initial: t.sftp.menu.newFileDefault,
+    });
   };
 
   const confirmDraft = async (name: string): Promise<void> => {
     if (!serverId || !draft) return;
     const kind = draft.kind;
     setDraft(null);
-    const parent = kind === "rename" ? breadcrumbParent(draft.path) : draft.path;
+    const parent =
+      kind === "rename" ? breadcrumbParent(draft.path) : draft.path;
     const target = joinRemoteFor(parent, name);
     if (kind === "rename") {
       await window.api.sftp.rename(serverId, draft.path, target);
@@ -542,12 +571,13 @@ export function SftpPane() {
   const transferRows = transfers.filter(
     (transfer) => !serverId || transfer.serverId === serverId,
   );
-  const transferFailed = transferRows.filter((row) => row.status === "failed");
   const cancelTransfer = (id: string): void => window.api.sftp.cancel(id);
   const retryTransfer = (transfer: SftpTransfer): void => {
     if (!serverId) return;
     if (transfer.direction === "upload" && transfer.fromLocalPath) {
-      void window.api.sftp.upload(serverId, cwd, [transfer.fromLocalPath], { overwrite: true });
+      void window.api.sftp.upload(serverId, cwd, [transfer.fromLocalPath], {
+        overwrite: true,
+      });
       return;
     }
     if (transfer.direction === "copy" && transfer.fromLocalPath) {
@@ -627,7 +657,10 @@ export function SftpPane() {
               /
             </button>
             {breadcrumbs.map((segment, index) => (
-              <div className="flex shrink-0 items-center gap-1" key={`${segment}-${index}`}>
+              <div
+                className="flex shrink-0 items-center gap-1"
+                key={`${segment}-${index}`}
+              >
                 <span className="text-(--ui-text-quaternary)">/</span>
                 <button
                   className={cx(
@@ -678,7 +711,10 @@ export function SftpPane() {
             depth={0}
             dirs={sortedEntries
               .filter((entry) => entry.kind === "dir")
-              .map((entry) => ({ name: entry.name, path: joinRemoteFor(cwd, entry.name) }))}
+              .map((entry) => ({
+                name: entry.name,
+                path: joinRemoteFor(cwd, entry.name),
+              }))}
             expandedDirs={openDirs}
             loadingDirs={treeLoading}
             onNameClick={(dir) => navigateTreeDir(dir)}
@@ -688,7 +724,9 @@ export function SftpPane() {
         {/* File list */}
         <div
           className="relative min-h-0 flex-1 overflow-y-auto"
-          onClick={() => setSelection(reduceSelection(selection, rowNames, { op: "clear" }))}
+          onClick={() =>
+            setSelection(reduceSelection(selection, rowNames, { op: "clear" }))
+          }
           onDragOver={onDragOverPane}
           onDrop={(event) => void onDropOnTarget(event, null)}
         >
@@ -725,7 +763,11 @@ export function SftpPane() {
                   type="button"
                 >
                   {t.sftp.list.name}
-                  <SortMark asc={sortAsc} activeKey={sortKey} headerKey="name" />
+                  <SortMark
+                    asc={sortAsc}
+                    activeKey={sortKey}
+                    headerKey="name"
+                  />
                 </button>
                 <button
                   className="w-20 text-right hover:text-fg"
@@ -733,7 +775,11 @@ export function SftpPane() {
                   type="button"
                 >
                   {t.sftp.list.size}
-                  <SortMark asc={sortAsc} activeKey={sortKey} headerKey="size" />
+                  <SortMark
+                    asc={sortAsc}
+                    activeKey={sortKey}
+                    headerKey="size"
+                  />
                 </button>
                 <button
                   className="w-36 text-right hover:text-fg"
@@ -741,7 +787,11 @@ export function SftpPane() {
                   type="button"
                 >
                   {t.sftp.list.mtime}
-                  <SortMark asc={sortAsc} activeKey={sortKey} headerKey="mtimeMs" />
+                  <SortMark
+                    asc={sortAsc}
+                    activeKey={sortKey}
+                    headerKey="mtimeMs"
+                  />
                 </button>
               </div>
               {sortedEntries.map((entry) => (
@@ -754,7 +804,10 @@ export function SftpPane() {
                     // A right-click on an unselected row RE-SELECTS that row (the Finder rule).
                     if (!selection.has(entry.name)) {
                       setSelection(
-                        reduceSelection(selection, rowNames, { op: "set-one", name: entry.name }),
+                        reduceSelection(selection, rowNames, {
+                          op: "set-one",
+                          name: entry.name,
+                        }),
                       );
                     }
                     menuOpen(event);
@@ -797,8 +850,17 @@ export function SftpPane() {
                 if (menuTargets[0]) runRename(menuTargets[0]);
               },
             },
+            {
+              label: t.sftp.menu.delete,
+              disabled: menuTargets.length === 0,
+              run: runDelete,
+            },
             { separator: true, label: "", disabled: false, run: () => {} },
-            { label: t.sftp.menu.copy, disabled: !disabledTargets, run: runCopy },
+            {
+              label: t.sftp.menu.copy,
+              disabled: !disabledTargets,
+              run: runCopy,
+            },
             { label: t.sftp.menu.cut, disabled: !disabledTargets, run: runCut },
             { label: t.sftp.menu.paste, disabled: !canPaste, run: runPaste },
           ]}
@@ -872,13 +934,17 @@ function TreeRows({
   expandedDirs: ReadonlySet<string>;
   childrenOf: (dir: string) => readonly SftpEntry[] | undefined;
   loadingDirs: ReadonlySet<string>;
-  onOpen(path: string, name: string): void;
-  onNameClick(path: string): void;
+  onOpen: (path: string, name: string) => void;
+  onNameClick: (path: string) => void;
 }) {
   const { t } = useI18n();
   if (dirs.length === 0) {
     if (depth === 0) {
-      return <p className="px-2 py-3 text-meta text-fg-quaternary">{t.sftp.tree.empty}</p>;
+      return (
+        <p className="px-2 py-3 text-meta text-fg-quaternary">
+          {t.sftp.tree.empty}
+        </p>
+      );
     }
     return null;
   }
@@ -903,9 +969,16 @@ function TreeRows({
                 type="button"
               >
                 {loading ? (
-                  <Icon className="animate-spin" name="loader-circle" size={11} />
+                  <Icon
+                    className="animate-spin"
+                    name="loader-circle"
+                    size={11}
+                  />
                 ) : (
-                  <Icon name={expanded ? "chevron-down" : "chevron-right"} size={11} />
+                  <Icon
+                    name={expanded ? "chevron-down" : "chevron-right"}
+                    size={11}
+                  />
                 )}
               </button>
               <button
@@ -955,9 +1028,9 @@ function FileRow({
   entry: SftpEntry;
   selected: boolean;
   cut: boolean;
-  onClick(event: React.MouseEvent): void;
-  onKeyDown(event: React.KeyboardEvent): void;
-  onContextMenu(event: React.MouseEvent): void;
+  onClick: (event: React.MouseEvent) => void;
+  onKeyDown: (event: React.KeyboardEvent) => void;
+  onContextMenu: (event: React.MouseEvent) => void;
 }) {
   const rowRef = useRef<HTMLDivElement | null>(null);
   return (
@@ -965,7 +1038,9 @@ function FileRow({
       aria-selected={selected}
       className={cx(
         "flex min-w-0 items-center gap-2 px-3 py-[3px] text-aux transition-colors",
-        selected ? "bg-(--chrome-action-hover) text-fg" : "hover:bg-(--ui-row-hover-background) hover:text-fg",
+        selected
+          ? "bg-(--chrome-action-hover) text-fg"
+          : "hover:bg-(--ui-row-hover-background) hover:text-fg",
         cut && "opacity-50",
       )}
       data-sftp-row={entry.name}
@@ -985,7 +1060,7 @@ function FileRow({
         event.dataTransfer.setData(SFTP_MOVE_MIME, entry.name);
         event.dataTransfer.effectAllowed = "move";
       }}
-      onDrop={(event) => {
+      onDrop={() => {
         // No per-row drop: the event bubbles to the list container, whose handler drops into
         // the CURRENT directory (v1 scope — per-folder drop targets are a designer-pass want).
       }}
@@ -1035,11 +1110,14 @@ function TransferRow({
   onRetry,
 }: {
   transfer: SftpTransfer;
-  onCancel(id: string): void;
-  onRetry(transfer: SftpTransfer): void;
+  onCancel: (id: string) => void;
+  onRetry: (transfer: SftpTransfer) => void;
 }) {
   const { t } = useI18n();
-  const fraction = sftpTransferFraction(transfer.bytesDone, transfer.bytesTotal);
+  const fraction = sftpTransferFraction(
+    transfer.bytesDone,
+    transfer.bytesTotal,
+  );
   const failed = transfer.status === "failed";
   return (
     <div
@@ -1074,7 +1152,10 @@ function TransferRow({
             />
           </div>
         ) : (
-          <span className={cx("text-meta", failed && "text-danger")} title={transfer.error}>
+          <span
+            className={cx("text-meta", failed && "text-danger")}
+            title={transfer.error}
+          >
             {transfer.status === "done"
               ? t.sftp.transfers.done
               : transfer.status === "canceled"
@@ -1116,8 +1197,8 @@ function TransfersStrip({
   onRetry,
 }: {
   rows: readonly SftpTransfer[];
-  onCancel(id: string): void;
-  onRetry(transfer: SftpTransfer): void;
+  onCancel: (id: string) => void;
+  onRetry: (transfer: SftpTransfer) => void;
 }) {
   const { t } = useI18n();
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
@@ -1168,9 +1249,12 @@ function TransfersStrip({
 
   function clearFinished(): void {
     setSftpTransfers(
-      $sftpTransfers.get().filter(
-        (transfer) => transfer.status === "active" || transfer.status === "failed",
-      ),
+      $sftpTransfers
+        .get()
+        .filter(
+          (transfer) =>
+            transfer.status === "active" || transfer.status === "failed",
+        ),
     );
     setHidden(new Set());
   }
@@ -1184,11 +1268,11 @@ function SftpContextMenu({
 }: {
   items: ReadonlyArray<{
     label: string;
-    run(): void;
+    run: () => void;
     disabled?: boolean;
     separator?: boolean;
   }>;
-  onClose(): void;
+  onClose: () => void;
   position: { x: number; y: number };
 }) {
   const itemClass =
@@ -1210,7 +1294,10 @@ function SftpContextMenu({
       >
         {items.map((item, index) =>
           item.separator ? (
-            <div className="mx-2 my-1 h-px bg-(--ui-stroke-tertiary)" key={`sep-${index}`} />
+            <div
+              className="mx-2 my-1 h-px bg-(--ui-stroke-tertiary)"
+              key={`sep-${index}`}
+            />
           ) : (
             <button
               className={itemClass}

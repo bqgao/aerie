@@ -4,7 +4,10 @@
 // resolved it is a degenerate object with no methods at all — every test that
 // touches localStorage fails with "localStorage.clear is not a function".
 // Redirect the broken global to the jsdom window's real implementation.
-if (typeof globalThis.localStorage !== "undefined" && typeof globalThis.localStorage.clear !== "function") {
+if (
+  typeof globalThis.localStorage !== "undefined" &&
+  typeof globalThis.localStorage.clear !== "function"
+) {
   const win = globalThis as { window?: { localStorage?: Storage } };
   const jsdomStorage = win.window?.localStorage;
   if (jsdomStorage && typeof jsdomStorage.clear === "function") {
@@ -21,10 +24,12 @@ if (typeof globalThis.localStorage !== "undefined" && typeof globalThis.localSto
         return store.size;
       },
       clear: () => store.clear(),
-      getItem: (key: string) => (store.has(key) ? (store.get(key) as string) : null),
+      getItem: (key: string) =>
+        store.has(key) ? (store.get(key) as string) : null,
       key: (index: number) => Array.from(store.keys())[index] ?? null,
       removeItem: (key: string) => void store.delete(key),
-      setItem: (key: string, value: string) => void store.set(key, String(value)),
+      setItem: (key: string, value: string) =>
+        void store.set(key, String(value)),
     };
     Object.defineProperty(globalThis, "localStorage", {
       value: memory,

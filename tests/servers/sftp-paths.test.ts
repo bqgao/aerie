@@ -75,6 +75,8 @@ describe("conflictRenameCandidate (the name-2.ext suffix)", () => {
 
   it("un-adorned names suffix bare", () => {
     const taken = new Set(["Makefile", "Makefile-2"]);
-    expect(conflictRenameCandidate("Makefile", (c) => taken.has(c))).toBe("Makefile-3");
+    expect(conflictRenameCandidate("Makefile", (c) => taken.has(c))).toBe(
+      "Makefile-3",
+    );
   });
 });

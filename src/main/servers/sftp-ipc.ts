@@ -13,12 +13,7 @@
  * close; the service itself is app-level so onDown kills transfers even while no window shows
  * them. Everything else is a straight service delegation.
  */
-import {
-  app,
-  dialog,
-  ipcMain,
-  BrowserWindow,
-} from "electron";
+import { app, dialog, ipcMain, BrowserWindow } from "electron";
 import { SFTP, type SftpTransferSnapshot } from "@shared/sftp";
 import { remoteBasename } from "@shared/sftp-paths";
 import type { SftpService } from "./sftp-service";
@@ -83,19 +78,26 @@ export function registerSftpIpc({
     return service.mkdir(serverId, rawPath);
   });
 
-  ipcMain.handle(SFTP.createFile, (_e, rawServerId: unknown, rawPath: unknown) => {
-    const serverId = requireServer(rawServerId);
-    if (!serverId || typeof rawPath !== "string") {
-      return Promise.resolve({ ok: false, error: "Invalid request." });
-    }
-    return service.createFile(serverId, rawPath);
-  });
+  ipcMain.handle(
+    SFTP.createFile,
+    (_e, rawServerId: unknown, rawPath: unknown) => {
+      const serverId = requireServer(rawServerId);
+      if (!serverId || typeof rawPath !== "string") {
+        return Promise.resolve({ ok: false, error: "Invalid request." });
+      }
+      return service.createFile(serverId, rawPath);
+    },
+  );
 
   ipcMain.handle(
     SFTP.rename,
     (_e, rawServerId: unknown, rawFrom: unknown, rawTo: unknown) => {
       const serverId = requireServer(rawServerId);
-      if (!serverId || typeof rawFrom !== "string" || typeof rawTo !== "string") {
+      if (
+        !serverId ||
+        typeof rawFrom !== "string" ||
+        typeof rawTo !== "string"
+      ) {
         return Promise.resolve({ ok: false, error: "Invalid request." });
       }
       return service.rename(serverId, rawFrom, rawTo);
@@ -170,28 +172,27 @@ export function registerSftpIpc({
         }
         localPaths = open.filePaths;
       }
-  const opts =
-    rawOpts !== null && typeof rawOpts === "object"
-      ? (rawOpts as { overwrite?: unknown; renameAs?: Record<string, string> })
-      : undefined;
-  const normalized =
-    opts && (opts.overwrite === true || opts.renameAs)
-      ? {
-          overwrite: opts.overwrite === true,
-          ...(opts.renameAs ? { renameAs: opts.renameAs } : {}),
-        }
-      : undefined;
-  return service.upload(serverId, rawDir, localPaths, normalized);
+      const opts =
+        rawOpts !== null && typeof rawOpts === "object"
+          ? (rawOpts as {
+              overwrite?: unknown;
+              renameAs?: Record<string, string>;
+            })
+          : undefined;
+      const normalized =
+        opts && (opts.overwrite === true || opts.renameAs)
+          ? {
+              overwrite: opts.overwrite === true,
+              ...(opts.renameAs ? { renameAs: opts.renameAs } : {}),
+            }
+          : undefined;
+      return service.upload(serverId, rawDir, localPaths, normalized);
     },
   );
 
   ipcMain.handle(
     SFTP.copy,
-    async (
-      _e,
-      rawServerId: unknown,
-      rawItems: unknown,
-    ): Promise<unknown> => {
+    async (_e, rawServerId: unknown, rawItems: unknown): Promise<unknown> => {
       const serverId = requireServer(rawServerId);
       if (!serverId || !Array.isArray(rawItems)) {
         return { ok: false, error: "Nothing to paste." };
