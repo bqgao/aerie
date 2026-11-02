@@ -105,7 +105,10 @@ describe("createCompositeProvider", () => {
     const opencode = fake("opencode", calls);
     opencode.forkSession = (id: string) => {
       calls.push(`fork:opencode:${id}`);
-      return Promise.resolve({ ok: true, session: { id: "forked-1" } as never });
+      return Promise.resolve({
+        ok: true,
+        session: { id: "forked-1" } as never,
+      });
     };
     const p = createCompositeProvider(
       { claude: fake("claude", calls), codex: fake("codex", calls), opencode },
