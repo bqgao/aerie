@@ -82,6 +82,11 @@ export function previewTimer(
   }
 }
 
+/** The viewport bounds the placement function wants, read off the live window (adapter helper). */
+export function previewViewport(w: Window): { width: number; height: number } {
+  return { width: w.innerWidth, height: w.innerHeight };
+}
+
 function sameGeometry(a: PreviewAnchor, b: PreviewAnchor): boolean {
   return (
     a.left === b.left &&

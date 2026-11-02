@@ -51,6 +51,7 @@ import {
   setRailListMode,
   type RailListMode,
 } from "./inbox-model";
+import { useSessionPreview } from "./session-preview-card";
 import { SegmentedSwitch } from "../ui/SegmentedSwitch";
 import { useStore } from "@nanostores/react";
 
@@ -116,6 +117,8 @@ export function LeftSidebar({
   // to All, that narrows every session section below the toggle.
   const railMode = useStore($railListMode);
   const inbox = railMode === "inbox";
+  // The rail's hover preview (tier-1 spec Run 1 / A2): one card, fed by the row adapters below.
+  const preview = useSessionPreview(sessions, homeDir);
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   // Explicit per-parent overrides only. Families default collapsed and expand only from their
@@ -335,6 +338,8 @@ export function LeftSidebar({
           activeDescendantCount={node.activeDescendantCount}
           childrenExpanded={!familyCollapsed}
           showReasonChip={inbox}
+          onPreviewEnter={preview.onRowEnter}
+          onPreviewLeave={preview.onRowLeave}
           onToggleChildren={
             node.children.length > 0
               ? () => {
@@ -629,6 +634,8 @@ export function LeftSidebar({
                     onRename={onRename}
                     onTogglePin={onTogglePin}
                     showReasonChip={inbox}
+                    onPreviewEnter={preview.onRowEnter}
+                    onPreviewLeave={preview.onRowLeave}
                   />
                 ))}
               </div>
@@ -832,6 +839,7 @@ export function LeftSidebar({
           </div>,
           document.body,
         )}
+      {preview.card}
     </>
   );
 }

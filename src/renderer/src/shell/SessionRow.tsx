@@ -4,7 +4,7 @@ import { cx, Lamp } from "../ui/atoms";
 import { Icon } from "../ui/icons";
 import { AgentIcon } from "../ui/agent-icons";
 import { useI18n } from "../i18n";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSessionMenu } from "./use-session-menu";
 import { SessionMenuDropdown } from "./SessionMenuDropdown";
 import { SessionReasonChip } from "./session-reason-chip";
@@ -52,6 +52,8 @@ export function SessionRow({
   childrenExpanded = false,
   onToggleChildren,
   showReasonChip = false,
+  onPreviewEnter,
+  onPreviewLeave,
 }: {
   session: Session;
   selected: boolean;
@@ -70,6 +72,14 @@ export function SessionRow({
   onToggleChildren?: () => void;
   /** The rail's Inbox mode (tier-1 spec Run 1 / A1): show the waiting-on-user reason chip. */
   showReasonChip?: boolean;
+  /** The rail's hover preview (tier-1 spec Run 1 / A2): mouse enter/leave reporting; the
+   *  pointer guards (mouse-only, no pressed buttons) live in the hook's boundary. */
+  onPreviewEnter?: (
+    session: Session,
+    element: Element,
+    event: { pointerType: string; buttons: number },
+  ) => void;
+  onPreviewLeave?: () => void;
 }) {
   const { t } = useI18n();
   // Pass R: the server badge for remote opencode sessions — the id's namespace is the server key;
@@ -104,6 +114,14 @@ export function SessionRow({
   const rowStyle =
     cappedDepth > 0 ? { marginLeft: `${cappedDepth * 12}px` } : undefined;
 
+  // The hover preview (tier-1 spec Run 1 / A2) rides this row's container; an open menu is a
+  // dismissal — the card means nothing while the user is exercising actions. Hooks stay above
+  // the edit-mode early return (rules-of-hooks).
+  const leaveRef = useRef(onPreviewLeave);
+  leaveRef.current = onPreviewLeave;
+  useEffect(() => {
+    if (menu.open) leaveRef.current?.();
+  }, [menu.open]);
   if (menu.editing) {
     return (
       <div
@@ -126,7 +144,6 @@ export function SessionRow({
       </div>
     );
   }
-
   // The action trigger reveals on hover, keyboard focus inside the row, or while its menu is open.
   // Actions replace the role badge or agent in the same slot, keeping the disclosure stationary.
   // group-has-[:focus-visible] (not group-focus-within) means a plain click does not leave the row
@@ -142,6 +159,15 @@ export function SessionRow({
   return (
     <div
       style={rowStyle}
+      onPointerEnter={
+        onPreviewEnter
+          ? (event) => {
+              if (menu.open) return;
+              onPreviewEnter(session, event.currentTarget, event);
+            }
+          : undefined
+      }
+      onPointerLeave={onPreviewLeave}
       className={cx(
         "group relative flex min-h-[1.625rem] min-w-0 items-center gap-1 rounded-md transition-colors duration-100 ease-out hover:transition-none",
         selected && "rounded-md bg-(--ui-row-active-background)",

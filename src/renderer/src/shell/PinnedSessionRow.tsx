@@ -9,6 +9,7 @@ import { useI18n } from "../i18n";
 import { sessionRepoLabel } from "./session-list-model";
 import { useSessionMenu } from "./use-session-menu";
 import { SessionMenuDropdown } from "./SessionMenuDropdown";
+import { useEffect, useRef } from "react";
 import { SessionReasonChip } from "./session-reason-chip";
 
 /**
@@ -35,6 +36,8 @@ export function PinnedSessionRow({
   onRename,
   onTogglePin,
   showReasonChip = false,
+  onPreviewEnter,
+  onPreviewLeave,
 }: {
   session: Session;
   selected: boolean;
@@ -47,6 +50,14 @@ export function PinnedSessionRow({
   onTogglePin: (id: string, pinned: boolean) => void;
   /** The rail's Inbox mode (tier-1 spec Run 1 / A1): show the waiting-on-user reason chip. */
   showReasonChip?: boolean;
+  /** The rail's hover preview (tier-1 spec Run 1 / A2): mouse enter/leave reporting; the
+   *  pointer guards (mouse-only, no pressed buttons) live in the hook's boundary. */
+  onPreviewEnter?: (
+    session: Session,
+    element: Element,
+    event: { pointerType: string; buttons: number },
+  ) => void;
+  onPreviewLeave?: () => void;
 }) {
   const { t } = useI18n();
   const menu = useSessionMenu(session, canSpawn, {
@@ -69,6 +80,14 @@ export function PinnedSessionRow({
       ? session.branch
       : undefined;
 
+  // The hover preview (tier-1 spec Run 1 / A2) rides this row's container; an open menu is a
+  // dismissal — the card means nothing while the user is exercising actions. Hooks stay above
+  // the edit-mode early return (rules-of-hooks).
+  const leaveRef = useRef(onPreviewLeave);
+  leaveRef.current = onPreviewLeave;
+  useEffect(() => {
+    if (menu.open) leaveRef.current?.();
+  }, [menu.open]);
   if (menu.editing) {
     return (
       <div className="flex min-h-[1.625rem] min-w-0 items-center gap-1.5 rounded-md py-0.5 pl-2 pr-2">
@@ -88,7 +107,6 @@ export function PinnedSessionRow({
       </div>
     );
   }
-
   // Reveal model mirrors SessionRow: hover / keyboard-focus-inside / menu-open all reveal the
   // trigger and simultaneously vacate the right-aligned meta (line-1 time, line-2 model chip) via
   // `invisible` — both are wider than the 20px trigger, so it lands inside their kept-open space
@@ -99,7 +117,18 @@ export function PinnedSessionRow({
     menu.open && "invisible",
   );
   return (
-    <div className="group relative">
+    <div
+      className="group relative"
+      onPointerEnter={
+        onPreviewEnter
+          ? (event) => {
+              if (menu.open) return;
+              onPreviewEnter(session, event.currentTarget, event);
+            }
+          : undefined
+      }
+      onPointerLeave={onPreviewLeave}
+    >
       <button
         type="button"
         onClick={onSelect}
