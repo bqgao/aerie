@@ -334,6 +334,7 @@ export function LeftSidebar({
           descendantCount={node.descendantCount}
           activeDescendantCount={node.activeDescendantCount}
           childrenExpanded={!familyCollapsed}
+          showReasonChip={inbox}
           onToggleChildren={
             node.children.length > 0
               ? () => {
@@ -627,6 +628,7 @@ export function LeftSidebar({
                     onEnd={onEnd}
                     onRename={onRename}
                     onTogglePin={onTogglePin}
+                    showReasonChip={inbox}
                   />
                 ))}
               </div>

@@ -75,3 +75,23 @@ export function inboxReason(session: Session): InboxReason {
   }
   return { kind: "generic" };
 }
+
+/** Resolve a mapped reason to its display text, given the caller's localized labels. Kept pure
+ *  and JSX-free so the row chip and the preview card share one mapping. */
+export function inboxReasonText(
+  reason: InboxReason,
+  labels: {
+    idle: string;
+    generic: string;
+    permission: (tool: string) => string;
+  },
+): string {
+  switch (reason.kind) {
+    case "idle":
+      return labels.idle;
+    case "generic":
+      return labels.generic;
+    case "permission":
+      return labels.permission(reason.tool);
+  }
+}

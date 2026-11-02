@@ -9,6 +9,7 @@ import { useI18n } from "../i18n";
 import { sessionRepoLabel } from "./session-list-model";
 import { useSessionMenu } from "./use-session-menu";
 import { SessionMenuDropdown } from "./SessionMenuDropdown";
+import { SessionReasonChip } from "./session-reason-chip";
 
 /**
  * The PINNED section's enriched two-line row (2026-07-17 pinned-sessions spec, style B): lamp +
@@ -33,6 +34,7 @@ export function PinnedSessionRow({
   onEnd,
   onRename,
   onTogglePin,
+  showReasonChip = false,
 }: {
   session: Session;
   selected: boolean;
@@ -43,6 +45,8 @@ export function PinnedSessionRow({
   onEnd: (id: string) => void;
   onRename: (id: string, title: string | null) => void;
   onTogglePin: (id: string, pinned: boolean) => void;
+  /** The rail's Inbox mode (tier-1 spec Run 1 / A1): show the waiting-on-user reason chip. */
+  showReasonChip?: boolean;
 }) {
   const { t } = useI18n();
   const menu = useSessionMenu(session, canSpawn, {
@@ -145,6 +149,9 @@ export function PinnedSessionRow({
           </span>
         </span>
         <span className="flex w-full min-w-0 items-center gap-1 pl-5 text-[0.72rem] leading-none text-(--ui-text-quaternary)">
+          {showReasonChip && (
+            <SessionReasonChip session={session} className="self-start" />
+          )}
           <span className="min-w-0 truncate">{repo}</span>
           {branch && (
             <>

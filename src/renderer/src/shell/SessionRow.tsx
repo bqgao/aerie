@@ -7,6 +7,7 @@ import { useI18n } from "../i18n";
 import { useEffect, useState } from "react";
 import { useSessionMenu } from "./use-session-menu";
 import { SessionMenuDropdown } from "./SessionMenuDropdown";
+import { SessionReasonChip } from "./session-reason-chip";
 /** Pass R: server names for remote session badges, fetched ONCE per renderer session (the rail's
  *  rows all share the module cache). serverId → { name, host }; a failed read still yields an
  *  empty map, and the badge falls back to the bare id — a rail render must never reject. */
@@ -50,6 +51,7 @@ export function SessionRow({
   activeDescendantCount = 0,
   childrenExpanded = false,
   onToggleChildren,
+  showReasonChip = false,
 }: {
   session: Session;
   selected: boolean;
@@ -66,6 +68,8 @@ export function SessionRow({
   activeDescendantCount?: number;
   childrenExpanded?: boolean;
   onToggleChildren?: () => void;
+  /** The rail's Inbox mode (tier-1 spec Run 1 / A1): show the waiting-on-user reason chip. */
+  showReasonChip?: boolean;
 }) {
   const { t } = useI18n();
   // Pass R: the server badge for remote opencode sessions — the id's namespace is the server key;
@@ -175,6 +179,7 @@ export function SessionRow({
         >
           {session.title}
         </span>
+        {showReasonChip && <SessionReasonChip session={session} />}
         {hasChildren && (
           <span
             className={cx(
