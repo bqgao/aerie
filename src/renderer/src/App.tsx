@@ -65,6 +65,7 @@ import { SFTP_PANE_ID, EDITOR_PANE_ID, SEARCH_PANE_ID } from "./shell/layout";
 import { EditorPane } from "./shell/editor/EditorPane";
 import { SearchPane } from "./search/SearchPane";
 import { PersistentTerminal } from "./shell-terminal/persistent";
+import { QuickPalette } from "./shell/QuickPalette";
 import { installTerminalKeybind } from "./shell-terminal/keybinds";
 import { $activeSessionCwd, $terminalTakeover } from "./shell-terminal/store";
 
@@ -765,6 +766,14 @@ export function App() {
           the sidebars'/header's full-width drag strips or the strips swallow their clicks. */}
       <TitlebarControls hasSession={hasSession} />
       <AppFooter version={__APP_VERSION__} />
+      {/* B2: the ⌘⇧O quick palette — one mount, cold start b05a67da's rule: shell
+          stores ($serverProfiles/$editorTabs/panes) are renderer-resident so a
+          closed-by-default modal costs nothing until summoned. */}
+      <QuickPalette
+        sessions={all}
+        homeDir={homeDir}
+        onSelectSession={setSelectedId}
+      />
     </div>
   );
 }
