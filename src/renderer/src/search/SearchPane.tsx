@@ -207,7 +207,7 @@ function SearchResultRow({
             span.hit ? (
               <mark
                 key={i}
-                className="bg-transparent font-medium text-primary-inset"
+                className="bg-transparent font-medium text-primary-bright"
               >
                 {span.text}
               </mark>
