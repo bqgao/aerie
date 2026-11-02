@@ -9,6 +9,7 @@ import { $locale } from "../../i18n";
 import { TRANSLATIONS } from "../../i18n/catalog";
 import type { FileIoErrorKind } from "@shared/fileio";
 import { $serverProfiles } from "../../shell-terminal/ssh-model";
+import { SEARCH_PANE_ID, SFTP_PANE_ID } from "../layout";
 import { setPaneOpen } from "../panes";
 import {
   $editorActiveId,
@@ -29,6 +30,18 @@ import {
   type EditorOrigin,
   type EditorTab,
 } from "./editor-model";
+
+/**
+ * Opening a file is a "show me this" gesture: the editor pane docks and its right-dock
+ * siblings (SFTP browser, search results) yield so the file gets the full dock width.
+ * Manual titlebar toggles do NOT route through here — deliberately opening two panes
+ * side-by-side must keep working.
+ */
+export function focusEditorPane(): void {
+  setPaneOpen(EDITOR_PANE_ID, true);
+  setPaneOpen(SFTP_PANE_ID, false);
+  setPaneOpen(SEARCH_PANE_ID, false);
+}
 
 /** Live wording for the editor's in-band messages (the locale atom decides). */
 export const editorErrors = () => TRANSLATIONS[$locale.get()].editor.errors;
@@ -80,7 +93,7 @@ function localizePdfTempOpen(res: {
  *  viewer tab — no text read, no binary refusal (the name decides the kind). */
 export async function openLocalPath(path: string): Promise<void> {
   const origin: EditorOrigin = { kind: "local", path };
-  setPaneOpen(EDITOR_PANE_ID, true);
+  focusEditorPane();
   openEditorTab(origin);
   const id = tabIdOf(origin);
   if (isPdfName(origin.path)) {
@@ -132,7 +145,7 @@ export async function openServerInEditor(
         path,
         opencode: false,
       };
-  setPaneOpen(EDITOR_PANE_ID, true);
+  focusEditorPane();
   openEditorTab(origin);
   const id = tabIdOf(origin);
   if (isPdfName(basenameEditorish(path))) {

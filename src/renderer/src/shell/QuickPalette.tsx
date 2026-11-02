@@ -30,9 +30,10 @@ import { cx } from "../ui/atoms";
 import { Icon } from "../ui/icons";
 import { AgentIcon } from "../ui/agent-icons";
 import { ModalShell } from "../ui/ModalShell";
-import { EDITOR_PANE_ID, SEARCH_PANE_ID } from "./layout";
+import { SEARCH_PANE_ID } from "./layout";
 import { setPaneOpen } from "./panes";
 import { $editorTabs, activateEditorTab } from "./editor/editor-store";
+import { focusEditorPane } from "./editor/editor-actions";
 import {
   $serverProfiles,
   $serverStatus,
@@ -179,7 +180,7 @@ export function QuickPalette({
         break;
       case "tab":
         activateEditorTab(row.source.tab.id);
-        setPaneOpen(EDITOR_PANE_ID, true); // activating into a docked pane only
+        focusEditorPane(); // activating into a docked pane only, siblings yield
         break;
     }
     closeQuickPalette();
