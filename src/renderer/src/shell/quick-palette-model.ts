@@ -312,7 +312,7 @@ export function buildPaletteRows(input: PaletteInput): PaletteRow[] {
  *  fuzzy-matches the row's own (locale-rendered) label. `label` is passed in by the
  *  component so the model never hard-codes English. */
 export function shouldShowSearchRowsRow(query: string, label: string): boolean {
-  return !query || scoreMatch(query, label) !== null;
+  return !query.trim() || scoreMatch(query, label) !== null;
 }
 
 // ── navigation ───────────────────────────────────────────────────────────────

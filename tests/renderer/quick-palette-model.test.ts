@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPaletteRows,
+  isQuickPaletteChord,
+  paletteOpenAllowed,
+  PALETTE_ROW_CAP,
+  reducePaletteNav,
   scoreMatch,
   serverLampClass,
-  PALETTE_ROW_CAP,
+  shouldShowSearchRowsRow,
 } from "../../src/renderer/src/shell/quick-palette-model";
 import type { Session } from "@shared/types";
 import type { ServerProfile } from "@shared/servers";
@@ -293,5 +297,118 @@ describe("buildPaletteRows (source aggregation)", () => {
     );
     const rows = buildPaletteRows({ ...base, sessions: many, query: "" });
     expect(rows.length).toBeLessThanOrEqual(PALETTE_ROW_CAP);
+  });
+});
+
+describe("isQuickPaletteChord (⌘⇧O / Ctrl+⇧O)", () => {
+  const base = {
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    code: "KeyO",
+  };
+
+  it("accepts ⌘⇧O and Ctrl+⇧O", () => {
+    expect(
+      isQuickPaletteChord({ ...base, metaKey: true, shiftKey: true }),
+    ).toBe(true);
+    expect(
+      isQuickPaletteChord({ ...base, ctrlKey: true, shiftKey: true }),
+    ).toBe(true);
+  });
+
+  it("rejects missing modifiers, wrong keys, and Alt variants", () => {
+    expect(isQuickPaletteChord({ ...base })).toBe(false); // no modifiers
+    expect(isQuickPaletteChord({ ...base, shiftKey: true })).toBe(false);
+    expect(isQuickPaletteChord({ ...base, ctrlKey: true })).toBe(false);
+    expect(
+      isQuickPaletteChord({
+        ...base,
+        metaKey: true,
+        shiftKey: true,
+        code: "KeyP",
+      }),
+    ).toBe(false);
+    expect(
+      isQuickPaletteChord({
+        ...base,
+        metaKey: true,
+        shiftKey: true,
+        altKey: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("pins the physical key (code), not the produced character", () => {
+    // An international layout producing 'ö' still reads code === "KeyO".
+    expect(
+      isQuickPaletteChord({
+        ...base,
+        metaKey: true,
+        shiftKey: true,
+        code: "KeyO",
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("paletteOpenAllowed (ModalShell stacking gate)", () => {
+  it("refuses while any aria-modal dialog is in the DOM, allows otherwise", () => {
+    const withModal = document.createElement("div");
+    withModal.innerHTML = '<div role="dialog" aria-modal="true"></div>';
+    expect(paletteOpenAllowed(withModal)).toBe(false);
+    const withPlainDialog = document.createElement("div");
+    withPlainDialog.innerHTML = '<div role="dialog"></div>'; // non-modal: not a gate
+    expect(paletteOpenAllowed(withPlainDialog)).toBe(true);
+    expect(paletteOpenAllowed(document.createElement("div"))).toBe(true);
+  });
+});
+
+describe("reducePaletteNav (↑↓ wrap, jump/home clamp)", () => {
+  it("wraps up and down", () => {
+    const five = { index: 0, count: 5 };
+    expect(reducePaletteNav(five, { type: "up" }).index).toBe(4);
+    expect(
+      reducePaletteNav({ index: 4, count: 5 }, { type: "down" }).index,
+    ).toBe(0);
+    expect(reducePaletteNav(five, { type: "down" }).index).toBe(1);
+  });
+
+  it("clamps jump and pins home", () => {
+    const five = { index: 0, count: 5 };
+    expect(reducePaletteNav(five, { type: "jump", index: 9 }).index).toBe(4);
+    expect(reducePaletteNav(five, { type: "jump", index: -3 }).index).toBe(0);
+    expect(
+      reducePaletteNav({ index: 3, count: 5 }, { type: "home" }).index,
+    ).toBe(0);
+  });
+
+  it("pins at 0 on an empty list whatever arrives", () => {
+    const empty = { index: 0, count: 0 };
+    expect(reducePaletteNav(empty, { type: "down" }).index).toBe(0);
+    expect(reducePaletteNav(empty, { type: "up" }).index).toBe(0);
+    expect(reducePaletteNav(empty, { type: "jump", index: 2 }).index).toBe(0);
+    expect(
+      reducePaletteNav({ index: 2, count: 0 }, { type: "home" }).index,
+    ).toBe(0);
+  });
+});
+
+describe("shouldShowSearchRowsRow (pinned search-transcripts row)", () => {
+  it("shows on a blank query, or when the row's own label fuzzy-matches", () => {
+    expect(shouldShowSearchRowsRow("", "Search transcripts…")).toBe(true);
+    expect(shouldShowSearchRowsRow("   ", "Search transcripts…")).toBe(true);
+    expect(shouldShowSearchRowsRow("sear", "Search transcripts…")).toBe(true);
+    expect(shouldShowSearchRowsRow("transcript", "Search transcripts…")).toBe(
+      true,
+    );
+    // A query through the whole latin+ellipsis text still subsequence-matches; real
+    // unrelated text ("цы") cannot match at all.
+    expect(shouldShowSearchRowsRow("цы", "Search transcripts…")).toBe(false);
+  });
+
+  it("matches the zh label subsequence-wise too", () => {
+    expect(shouldShowSearchRowsRow("检索", "检索会话记录…")).toBe(true);
   });
 });
