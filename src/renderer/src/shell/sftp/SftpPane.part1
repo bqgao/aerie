@@ -1,0 +1,212 @@
+/**
+ * The SFTP file-manager pane (pass F, DESIGN_NOTES §F). A docked pane registered in panes.ts
+ * (id "sftp", default closed). Layout top→bottom: the server `CustomSelect` (connected lamps
+ * first), the breadcrumb/path bar (click a segment to jump; pencil → a path input, Enter
+ * navigates, Esc cancels, a miss answers the inline "path not found" line), the vertical
+ * tree+list split (lazy one-level tree open; the list of the CURRENT dir with name/size/mtime
+ * columns and a click-to-cycle sort), the actions strip (transfers), and the (context-menu
+ * driven) whole-file grammar — Download… / Upload Here… / New File / New Folder / Rename /
+ * Delete / Copy / Cut / Paste, multi-select with ⌘/Shift, drag-drop of LOCAL files IN = upload,
+ * in-pane drag = move (rename). Permission/entry errors surface as an inline banner UNDER the
+ * path bar (the DESIGN_NOTES rule: the list keeps its last good state).
+ *
+ * The store/context rules (sftp-store.ts) and the state rules (sftp-model.ts) are the testable
+ * halves; this component owns writes into them through window.api.sftp and the polling cadence
+ * (3s transfers poll — the F sanction; the push keeps it live between ticks).
+ */
+import { useStore } from "@nanostores/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { cx } from "../../ui/atoms";
+import { CustomSelect, type CustomSelectOption } from "../../ui/CustomSelect";
+import { Icon } from "../../ui/icons";
+import { ConfirmDialog } from "../../ui/ConfirmDialog";
+import { useI18n } from "../../i18n";
+import { $serverProfiles, $serverStatus, refreshServers } from "../shell-terminal/ssh-model";
+import {
+  ConflictDialog,
+  NamePromptDialog,
+  type ConflictChoice,
+  type ConflictResolution,
+} from "./sftp-dialogs";
+import {
+  applyConflict,
+  humanizeBytes,
+  humanizeMtime,
+  pathUpTo,
+  pasteTargets,
+  reduceSelection,
+  sortEntries,
+  type SftpClipboard,
+  type SftpSortKey,
+} from "./sftp-model";
+import {
+  SFTP_PANE_ID,
+  $sftpClipboard,
+  $sftpServerId,
+  setSftpClipboard,
+  setSftpTransfers,
+  setSftpServer,
+  setSftpCwd,
+  setSftpHome,
+  sftpContextOf,
+  $sftpTransfers,
+} from "./sftp-store";
+import type { SftpEntry } from "@shared/sftp";
+
+interface Draft {
+  kind: "new-file" | "new-folder" | "rename";
+  /** rename carries the full FROM path; new-* carry the parent dir. */
+  path: string;
+  initial: string;
+}
+
+type ConflictFlow = {
+  names: string[];
+  exists: (candidate: string) => boolean;
+  /** The backend action the answers feed into. */
+  kind: "upload" | "paste";
+  /** Upload: the local paths keyed to their conflict decision. */
+  upload?: {
+    localPaths: string[];
+    dir: string;
+  };
+  /** Paste: the from→to pairs the answers rewrite. */
+  paste?: Array<{ from: string; to: string }>;
+};
+
+/// One pane instance. All interactions run through the store atoms (the pane is the writer);
+/// resets are scope-based, never individual-entry garbage collection.
+export function SftpPane() {
+  const { t } = useI18n();
+  const servers = useStore($serverProfiles);
+  const statuses = useStore($serverStatus);
+  const serverId = useStore($sftpServerId) ?? servers[0]?.id ?? null;
+  const context = serverId ? sftpContextOf(serverId) : null;
+  const clipboard = useStore($sftpClipboard);
+  const transfers = useStore($sftpTransfers);
+
+  const [cwd, setCwdState] = useState<string>(context?.cwd ?? "/");
+  const [entries, setEntries] = useState<readonly SftpEntry[]>([]);
+  const [listStatus, setListStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [listError, setListError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SftpSortKey>("name");
+  const [sortAsc, setSortAsc] = useState(true);
+  const [selection, setSelection] = useState<ReadonlySet<string>>(new Set());
+  const [expanded, setExpanded] = useState<ReadonlyMap<string, readonly SftpEntry[]>>(new Map());
+  const [treeLoading, setTreeLoading] = useState<ReadonlySet<string>>(new Set());
+  const [pathBarEditing, setPathBarEditing] = useState(false);
+  const [pathBarValue, setPathBarValue] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<readonly SftpEntry[] | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [conflictFlow, setConflictFlow] = useState<ConflictFlow | null>(null);
+
+  // Guard every write that races an unmount: a late async answer must not touch the IDs of a
+  // server the pane has already left. epoch-based, lifecycle-owned.
+  const epochRef = useRef(0);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      epochRef.current++;
+    };
+  }, []);
+
+  // Keep the atom-level server selection in step (single source of truth for later passes).
+  useEffect(() => {
+    setSftpServer(serverId);
+  }, [serverId]);
+
+  // First context resolution: the server's home (SFTP realpath ".").
+  useEffect(() => {
+    if (!serverId) {
+      setEntries([]);
+      setListStatus("idle");
+      setListError(null);
+      setExpanded(new Map());
+      return;
+    }
+    const epoch = ++epochRef.current;
+    setListStatus("loading");
+    void window.api.sftp.home(serverId).then((res) => {
+      if (!mountedRef.current || epoch !== epochRef.current || !res.ok) return;
+      const ctx = sftpContextOf(serverId);
+      const target = ctx.home ?? res.path;
+      setSftpHome(serverId, target);
+      void navigate(serverId, target);
+    });
+    const onEvent = window.api.sftp.onEvent((snapshot) => {
+      if (mountedRef.current) setSftpTransfers(snapshot);
+    });
+    return onEvent;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate is recreated per render; only the serverId gate matters
+  }, [serverId]);
+
+  /** Fetch + install one directory listing (the cwd/world setter). */
+  const navigate = async (id: string, dir: string): Promise<void> => {
+    const epoch = epochRef.current;
+    setListStatus("loading");
+    setListError(null);
+    const res = await window.api.sftp.list(id, dir);
+    if (!mountedRef.current || epoch !== epochRef.current || id !== $sftpServerId.get()) {
+      return;
+    }
+    if (!res.ok) {
+      setListStatus("error");
+      setListError(res.notFound ? t.sftp.path.invalid : res.error);
+      return;
+    }
+    setEntries(sortEntries(res.entries, sortKey, sortAsc));
+    setListStatus("idle");
+    setListError(null);
+    setCwdState(res.path);
+    setSftpCwd(id, res.path, res.entries.map((entry) => entry.name));
+    setExpanded((prev) => {
+      const next = new Map(prev);
+      next.set(res.path, res.entries.filter((e) => e.kind === "dir"));
+      return next;
+    });
+    setSelection(new Set());
+    setPathBarEditing(false);
+  };
+
+  const serverOptions = useMemo<CustomSelectOption<string>[]>(() => {
+    const order = [...servers].sort((a, b) => {
+      const sa = statuses[a.id]?.status ?? "offline";
+      const sb = statuses[b.id]?.status ?? "offline";
+      const rank = (s: string): number =>
+        s === "connected" ? 0 : s === "connecting" ? 1 : 2;
+      return rank(sa) - rank(sb) || a.name.localeCompare(b.name);
+    });
+    return order.map((server) => {
+      const status = statuses[server.id]?.status ?? "offline";
+      const lampClass =
+        status === "connected"
+          ? "h-2 w-2 rounded-full bg-working shadow-[0_0_0.375rem_rgba(45,212,191,0.5)]"
+          : status === "connecting"
+            ? "h-2 w-2 animate-pulse rounded-full bg-accent"
+            : status === "error"
+              ? "h-2 w-2 rounded-full bg-danger"
+              : "h-2 w-2 rounded-full bg-ink-600";
+      return {
+        value: server.id,
+        label: server.name,
+        leading: <span className={cx("shrink-0", lampClass)} />,
+      };
+    });
+  }, [servers, statuses]);
+
+  // The 3s transfers poll (F note 3) + the server refresh the section shares.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!mountedRef.current) return;
+      void window.api.sftp.transfers().then(setSftpTransfers);
+      void refreshServers();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const breadcrumbs = useMemo(() => {
+    const segs = cwd.split("/").filter(Boolean);
+    return segs;
+  }, [cwd]);

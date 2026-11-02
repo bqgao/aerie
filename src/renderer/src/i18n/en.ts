@@ -442,6 +442,83 @@ export const en = {
       editInSettings: "Edit in Settings…",
       connect: "Connect",
       disconnect: "Disconnect",
+      browseFiles: "Browse Files",
+    },
+  },
+  /** The SFTP file manager pane (pass F). Keys follow DESIGN_NOTES' skeleton; extra keys carry
+   *  only wording the pane's own grammar needs (the conflict wizard's button labels, the
+   *  transfers strip's states, and the menu's two default NEW-name placeholders). */
+  sftp: {
+    pane: {
+      title: "Files",
+      serverLabel: "Server",
+    },
+    empty: {
+      noServers: "No servers yet — save one in Settings to browse its files.",
+    },
+    path: {
+      edit: "Edit path",
+      invalid: "Path not found",
+    },
+    tree: {
+      empty: "No subfolders",
+    },
+    list: {
+      empty: "Empty folder — drop files here to upload",
+      name: "Name",
+      size: "Size",
+      mtime: "Modified",
+      sortDirectionLabel: (asc: boolean): string => (asc ? "ascending" : "descending"),
+    },
+    menu: {
+      open: "Open",
+      download: "Download…",
+      uploadHere: "Upload Here…",
+      newFile: "New File…",
+      newFolder: "New Folder…",
+      rename: "Rename…",
+      delete: "Delete",
+      copy: "Copy",
+      cut: "Cut",
+      paste: "Paste",
+      // The pane's clipboard hint under the path bar while a cut selection is armed.
+      cutHint: "Cut",
+      // The name prompt's placeholder for the two create-paths (rename starts from the row).
+      newFileDefault: "untitled.txt",
+      newFolderDefault: "untitled-folder",
+    },
+    confirm: {
+      deleteTitle: (count: number) => `Delete ${count} item${count === 1 ? "" : "s"}?`,
+      deleteBody: (count: number) => `Removes ${count} item${count === 1 ? "" : "s"} from the server.`,
+      deleteFolder: "This deletes the folder and all its contents.",
+    },
+    conflict: {
+      title: 'A name already exists',
+      uploadTitle: "Upload conflict",
+      pasteTitle: "Paste conflict",
+      uploadBody: "The destination folder already has an entry with this name.",
+      pasteBody: "The destination has an entry with this name.",
+      count: (index: number, total: number) => `Item ${index + 1} of ${total}`,
+      overwrite: "Overwrite",
+      skip: "Skip",
+      rename: "Rename",
+      renameShort: (candidate: string) => `Rename to ${candidate}`,
+      overwriteAll: "Overwrite all",
+      skipAll: "Skip all",
+      applyAll: "Apply to all",
+    },
+    transfers: {
+      title: "Transfers",
+      done: "Done",
+      canceled: "Canceled",
+      failed: "Failed",
+      cancel: "Cancel",
+      retry: "Retry",
+      clearFinished: "Clear finished",
+      connectionLost: "Connection lost",
+    },
+    lock: {
+      reconnectedBanner: "Reconnected — refresh",
     },
   },
   /** Chrome for both terminal surfaces: the interactive shell-terminal pane's tab rail

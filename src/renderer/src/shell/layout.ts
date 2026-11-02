@@ -16,3 +16,8 @@ ensurePaneRegistered(CBW_RIGHT_PANE_ID, { open: true });
 export const CBW_TERMINAL_PANE_ID = "cbw-terminal";
 
 ensurePaneRegistered(CBW_TERMINAL_PANE_ID, { open: true });
+
+/** The SFTP file manager (pass F): a right-hand docked pane, default closed. */
+export const SFTP_PANE_ID = "sftp";
+
+ensurePaneRegistered(SFTP_PANE_ID, { open: false });

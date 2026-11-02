@@ -1,0 +1,246 @@
+
+  // ── drag & drop: local files in = upload (conflict-resolved); the paths ride getPathForFile ──
+
+  const resolveLocalDrop = async (
+    event: React.DragEvent,
+  ): Promise<string[]> => {
+    event.preventDefault();
+    event.stopPropagation();
+    const transfer = event.dataTransfer;
+    if (!transfer) return [];
+    const out: string[] = [];
+    for (const file of Array.from(transfer.files)) {
+      const path = window.api.getPathForFile(file);
+      if (path) out.push(path);
+    }
+    return out;
+  };
+
+  const uploadWithConflicts = async (localPaths: string[]): Promise<void> => {
+    if (!serverId || localPaths.length === 0) return;
+    const ctx = sftpContextOf(serverId);
+    const names = new Set(ctx.cwdNames);
+    const conflicts = localPaths.filter((p) =>
+      names.has(basenameLocal(p)),
+    );
+    if (conflicts.length === 0) {
+      const res = await window.api.sftp.upload(serverId, cwd, localPaths);
+      void res; // progress arrives via the push/poll
+      return;
+    }
+    setConflictFlow({
+      names: conflicts,
+      exists: (candidate) => names.has(candidate),
+      kind: "upload",
+      upload: { localPaths, dir: cwd },
+    });
+  };
+
+  const onDragOverList = (event: React.DragEvent): void => {
+    if (!event.dataTransfer || event.dataTransfer.types.includes("Files") === false) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  // ── in-pane drag = move within the same server (rename the selection to the drop target) ──
+  const onDropRows = async (event: React.DragEvent, targetDir: string | null): Promise<void> => {
+    if (!serverId) return;
+    const draggedId = event.dataTransfer?.getData("text/sftp-move");
+    event.preventDefault();
+    event.stopPropagation();
+    const target = targetDir ?? cwd;
+    if (!draggedId || !selectionAnyway() || !target) return;
+    const dragged = entries.find((entry) => entry.name === draggedId);
+    if (!dragged) return;
+    if (dragged.kind === "dir" && target.startsWith(`${cwd}/${dragged.name}`)) {
+      // Moving a folder into itself/its own subtree — reject quietly.
+      return;
+    }
+    await window.api.sftp.rename(
+      serverId,
+      `${cwd === "/" ? "" : cwd}/${dragged.name}`,
+      joinRemote(target, dragged.name),
+    );
+    void navigate(serverId, cwd);
+  };
+
+  // Lazily-defined row helpers (see bottom of this section for their bodies).
+  function selectionAnyway(): boolean {
+    return true;
+  }
+  function joinRemote(dir: string, name: string): string {
+    return dir === "/" ? `/${name}` : `${dir}/${name}`;
+  }
+  function basenameLocal(path: string): string {
+    return path.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? path;
+  }
+
+  // ── context-menu actions (the file grammar MENU always reads the CURRENT selection) ──
+
+  const menuTargetEntries = (): readonly SftpEntry[] => {
+    const hit = entries.filter((entry) => selection.has(entry.name));
+    return hit.length > 0 ? hit : entries.filter((e) => selection.size === 0 ? false : false);
+  };
+
+  const runDownload = async (): Promise<void> => {
+    if (!serverId) return;
+    const targets = menuTargetEntries();
+    const paths = targets.map((entry) => joinRemote(cwd, entry.name));
+    if (!paths.length) return;
+    await window.api.sftp.download(serverId, paths);
+  };
+
+  const runUploadHere = async (): Promise<void> => {
+    // Services: the native picker opens in MAIN (upload with an empty localPaths array).
+    if (!serverId) return;
+    await window.api.sftp.upload(serverId, cwd, []);
+  };
+
+  const runDelete = async (): Promise<void> => {
+    if (!serverId) return;
+    const targets = menuTargetEntries();
+    if (!targets.length) return;
+    setDeleteTarget(targets);
+  };
+
+  const confirmDelete = async (): Promise<void> => {
+    if (!serverId || !deleteTarget) return;
+    const paths = deleteTarget.map((entry) => joinRemote(cwd, entry.name));
+    setDeleteTarget(null);
+    const res = await window.api.sftp.delete(serverId, paths);
+    void res;
+    void navigate(serverId, cwd);
+  };
+
+  const runCopy = (): void => {
+    const targets = menuTargetEntries();
+    if (!targets.length) return;
+    const paths = targets.map((entry) => joinRemote(cwd, entry.name));
+    setClipboardLike({ mode: "copy", paths });
+  };
+  const runCut = (): void => {
+    const targets = menuTargetEntries();
+    if (!targets.length) return;
+    const paths = targets.map((entry) => joinRemote(cwd, entry.name));
+    setClipboardLike({ mode: "cut", paths });
+  };
+
+  const runPaste = async (): Promise<void> => {
+    if (!serverId || !clipboard || clipboard.paths.length === 0) return;
+    const namesInTarget = new Set(sftpContextOf(serverId).cwdNames);
+    const plan = pasteTargets(clipboard, cwd, namesInTarget);
+    if (plan.pairs.length === 0 && plan.conflicts.length === 0) return;
+    const startPaste = async () => {
+      const res = await window.api.sftp.copy(serverId, plan.pairs);
+      if (res.ok && plan.cleared) setClipboardLike(null);
+      else if (plan.cleared && res.ok) setClipboardLike(null);
+      void navigate(serverId, cwd);
+    };
+    if (plan.conflicts.length > 0) {
+      // Base pairs ride first; the conflicting ones resolve via the dialog, with any rename
+      // rewritten to its suffixed target.
+      const conflicts = plan.conflicts;
+      setConflictFlow({
+        names: conflicts.map((c) => basenameLocal(c.to)),
+        exists: (candidate) => namesInTarget.has(candidate),
+        kind: "paste",
+        paste: [
+          ...plan.pairs,
+          ...conflicts,
+        ],
+      });
+      void startPaste;
+    } else {
+      await startPaste();
+    }
+  };
+
+  const setClipboardLike = (value: SftpClipboard): void => {
+    $sftpClipboard.set(value);
+  };
+
+  const runRename = (entry: SftpEntry): void => {
+    setDraft({ kind: "rename", path: joinRemote(cwd, entry.name), initial: entry.name });
+  };
+  const runNewFolder = (): void => {
+    setDraft({ kind: "new-folder", path: cwd, initial: t.sftp.menu.newFolderDefault });
+  };
+  const runNewFile = (): void => {
+    setDraft({ kind: "new-file", path: cwd, initial: t.sftp.menu.newFileDefault });
+  };
+
+  const confirmDraft = async (name: string): Promise<void> => {
+    if (!serverId || !draft) return;
+    const kind = draft.kind;
+    setDraft(null);
+    let target: string;
+    if (kind === "rename") {
+      const from = draft.path;
+      const parent = from.slice(0, from.lastIndexOf("/")) || "/";
+      target = joinRemote(parent, name);
+      await window.api.sftp.rename(serverId, from, target);
+    } else if (kind === "new-folder") {
+      target = joinRemote(draft.path, name);
+      await window.api.sftp.mkdir(serverId, target);
+    } else {
+      target = joinRemote(draft.path, name);
+      await window.api.sftp.createFile(serverId, target);
+    }
+    void navigate(serverId, cwd);
+  };
+
+  // ── menu state (shared local context menu pattern; the rail's is the template) ──
+
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const openMenuAt = (event: React.MouseEvent): void => {
+    event.preventDefault();
+    setMenu({ x: event.clientX, y: event.clientY });
+  };
+
+  const canPaste = clipboard !== null && clipboard.paths.length > 0;
+  const menuItems = useMemo(() => {
+    const targets = menuTargetEntries();
+    const single = targets.length === 1 ? targets[0] : null;
+    return [
+      { label: t.sftp.menu.open, disabled: true, run: () => {} },
+      {
+        label: t.sftp.menu.download,
+        disabled: targets.length === 0,
+        run: () => void runDownload(),
+      },
+      { label: t.sftp.menu.uploadHere, disabled: false, run: () => void runUploadHere() },
+      { label: t.sftp.menu.newFile, disabled: false, run: runNewFile },
+      { label: t.sftp.menu.newFolder, disabled: false, run: runNewFolder },
+      {
+        label: t.sftp.menu.rename,
+        disabled: !single || targets.length !== 1,
+        run: () => single && runRename(single),
+      },
+      {
+        label: t.sftp.menu.delete,
+        disabled: targets.length === 0,
+        run: () => void runDelete(),
+      },
+      { separator: true, run: () => {}, disabled: false, label: "" },
+      {
+        label: t.sftp.menu.copy,
+        disabled: targets.length === 0,
+        run: runCopy,
+      },
+      {
+        label: t.sftp.menu.cut,
+        disabled: targets.length === 0,
+        run: runCut,
+      },
+      {
+        label: t.sftp.menu.paste,
+        disabled: !canPaste,
+        run: () => void runPaste(),
+      },
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- menu bodies read per-open state
+  }, [entries, selection, clipboard, cwd, serverId]);
+
+  return null;
+}

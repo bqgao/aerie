@@ -63,8 +63,8 @@ export function remoteDirname(path: string): string | null {
 /** The breadcrumb segments, root-first, absolute only ("/" → []). */
 export function remotePathSegments(path: string): string[] {
   const normalized = normalizeRemotePath(path);
-  if (!normalized || normalized === "/" || !normalized.startsWith("/"))
-    return normalized ? [normalized] : [];
+  if (!normalized || normalized === "/") return [];
+  if (!normalized.startsWith("/")) return [normalized];
   return normalized.slice(1).split("/");
 }
 

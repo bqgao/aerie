@@ -4,7 +4,8 @@ import { Icon } from "../ui/icons";
 import { useFullscreen } from "../ui/use-fullscreen";
 import { useI18n } from "../i18n";
 import { $paneOpen, togglePane } from "./panes";
-import { CBW_LEFT_PANE_ID, CBW_RIGHT_PANE_ID } from "./layout";
+import { CBW_LEFT_PANE_ID, CBW_RIGHT_PANE_ID, SFTP_PANE_ID } from "./layout";
+import { $serverProfiles } from "../shell-terminal/ssh-model";
 import {
   TITLEBAR_CONTROL_WIDTH,
   TITLEBAR_CONTROL_HEIGHT,
@@ -39,6 +40,10 @@ export function TitlebarControls({ hasSession }: { hasSession: boolean }) {
   const isFullscreen = useFullscreen();
   const leftOpen = useStore($paneOpen(CBW_LEFT_PANE_ID));
   const rightOpen = useStore($paneOpen(CBW_RIGHT_PANE_ID));
+  const sftpOpen = useStore($paneOpen(SFTP_PANE_ID));
+  // The Files toggle only exists once at least one server is saved (the pane has a context).
+  const serverId = useStore($serverProfiles)[0]?.id ?? null;
+  const hasServers = serverId !== null;
 
   return (
     <>
@@ -59,6 +64,13 @@ export function TitlebarControls({ hasSession }: { hasSession: boolean }) {
           }
           onSelect={() => togglePane(CBW_LEFT_PANE_ID)}
         />
+        {hasServers && (
+          <TitlebarToolButton
+            icon="folder"
+            label={t.sftp.pane.title}
+            onSelect={() => togglePane(SFTP_PANE_ID)}
+          />
+        )}
       </div>
       {hasSession && (
         <div
@@ -88,7 +100,7 @@ function TitlebarToolButton({
   label,
   onSelect,
 }: {
-  icon: "panel-left" | "panel-right";
+  icon: "panel-left" | "panel-right" | "folder";
   label: string;
   onSelect: () => void;
 }) {

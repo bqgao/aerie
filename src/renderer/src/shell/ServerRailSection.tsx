@@ -15,6 +15,9 @@ import {
 } from "../shell-terminal/ssh-model";
 import { selectTerminal } from "../shell-terminal/terminals";
 import { setTerminalTakeover } from "../shell-terminal/store";
+import { SFTP_PANE_ID } from "./layout";
+import { setPaneOpen } from "./panes";
+import { setSftpServer } from "./sftp/sftp-store";
 
 interface MenuState {
   x: number;
@@ -239,6 +242,16 @@ function ServerContextMenu({
           {t.shell.servers.disconnect}
         </button>
         <div className="mx-2 my-1 h-px bg-(--ui-stroke-tertiary)" />
+        <button
+          className={item}
+          onClick={run(() => {
+            setPaneOpen(SFTP_PANE_ID, true);
+            setSftpServer(menu.server.id);
+          })}
+          type="button"
+        >
+          {t.sftp.pane.title}
+        </button>
         <button
           className={item}
           onClick={run(() => onRoute(SETTINGS_ID))}

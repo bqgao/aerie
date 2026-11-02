@@ -54,6 +54,8 @@ import {
   RIGHT_MAX_WIDTH,
 } from "./shell/layout";
 import { TerminalPaneChrome } from "./shell-terminal/chrome";
+import { SftpPane } from "./shell/sftp/SftpPane";
+import { SFTP_PANE_ID } from "./shell/layout";
 import { PersistentTerminal } from "./shell-terminal/persistent";
 import { installTerminalKeybind } from "./shell-terminal/keybinds";
 import { $activeSessionCwd, $terminalTakeover } from "./shell-terminal/store";
@@ -452,6 +454,7 @@ export function App() {
   const narrow = useMediaQuery(NARROW_VIEWPORT_QUERY);
   const leftOpen = useStore($paneOpen(CBW_LEFT_PANE_ID));
   const rightOpen = useStore($paneOpen(CBW_RIGHT_PANE_ID));
+  const sftpPaneOpen = useStore($paneOpen(SFTP_PANE_ID));
   const terminalOpen = useStore($terminalTakeover);
   // Hermes' railColumnOpen gate, cbw-translated: the terminal drops to a row inside the right
   // rail only when the metrics sidebar is actually docked as a column (open, session selected,
@@ -624,6 +627,17 @@ export function App() {
             )}
             <TerminalPaneChrome />
           </div>
+        </Pane>
+        <Pane
+          id={SFTP_PANE_ID}
+          side="right"
+          width="19vw"
+          minWidth="16rem"
+          maxWidth="36vw"
+          divider
+          disabled={!sftpPaneOpen}
+        >
+          <SftpPane />
         </Pane>
         <Pane
           id={CBW_RIGHT_PANE_ID}
