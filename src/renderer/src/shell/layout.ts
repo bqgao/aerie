@@ -21,3 +21,10 @@ ensurePaneRegistered(CBW_TERMINAL_PANE_ID, { open: true });
 export const SFTP_PANE_ID = "sftp";
 
 ensurePaneRegistered(SFTP_PANE_ID, { open: false });
+
+/** The Editor pane (pass I-a): a right-hand docked pane with an internal tab strip, default
+ *  closed (spec: "default closed"). Tabs live in the editor store for the session; the pane's
+ *  open state is the only persisted bit, like SFTP's. */
+export const EDITOR_PANE_ID = "editor";
+
+ensurePaneRegistered(EDITOR_PANE_ID, { open: false });
