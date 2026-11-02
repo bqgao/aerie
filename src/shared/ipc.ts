@@ -19,6 +19,7 @@ import type {
 import type { TerminalApi } from "./terminal";
 import type { ShellTerminalApi } from "./shell-terminal";
 import type { SshTerminalApi } from "./ssh-terminal";
+import type { SftpApi } from "./sftp";
 import type { MetricsRead } from "./metrics";
 import type { ModelDefaults } from "./models";
 import type { StatsSnapshot, StatsRange, ScanProgress } from "./stats";
@@ -401,6 +402,9 @@ export type AppApi = IpcApi & {
   /** The SSH-terminal surface (S2): a remote shell channel per tab, riding ONE pooled ssh2 client
    *  per saved server resolved main-side — the renderer never sees credentials or a client. */
   terminalSsh: SshTerminalApi;
+  /** The file-manager surface (F): SFTP ops over the pooled ssh2 client per server, main-side
+   *  dialogs + one lazy sftp channel per server; transfers poll + push. */
+  sftp: SftpApi;
   /** Electron webUtils.getPathForFile: the absolute filesystem path of a DOM File dragged from the
    *  OS, for dropping paths into the terminal. Typed loosely (`object`) so this shared type stays
    *  DOM-lib-free under tsconfig.node.json; renderer call sites pass a real File. */

@@ -13,6 +13,7 @@ import {
 import { TERMINAL } from "@shared/terminal";
 import { SHELL_TERMINAL } from "@shared/shell-terminal";
 import { SSH_TERMINAL } from "@shared/ssh-terminal";
+import { SFTP } from "@shared/sftp";
 
 const api: AppApi = {
   overview: () => ipcRenderer.invoke(IPC.overview),
@@ -213,6 +214,31 @@ const api: AppApi = {
       ) => cb(id, code, reason);
       ipcRenderer.on(SSH_TERMINAL.exit, handler);
       return () => ipcRenderer.removeListener(SSH_TERMINAL.exit, handler);
+    },
+  },
+  sftp: {
+    list: (serverId, dir) => ipcRenderer.invoke(SFTP.list, serverId, dir),
+    stat: (serverId, path) => ipcRenderer.invoke(SFTP.stat, serverId, path),
+    home: (serverId) => ipcRenderer.invoke(SFTP.home, serverId),
+    mkdir: (serverId, path) => ipcRenderer.invoke(SFTP.mkdir, serverId, path),
+    rename: (serverId, from, to) =>
+      ipcRenderer.invoke(SFTP.rename, serverId, from, to),
+    delete: (serverId, paths) =>
+      ipcRenderer.invoke(SFTP.deleteFn, serverId, paths),
+    download: (serverId, remotePaths) =>
+      ipcRenderer.invoke(SFTP.download, serverId, remotePaths),
+    upload: (serverId, dir, localPaths, opts) =>
+      ipcRenderer.invoke(SFTP.upload, serverId, dir, localPaths, opts),
+    copy: (serverId, items) => ipcRenderer.invoke(SFTP.copy, serverId, items),
+    cancel: (transferId) => ipcRenderer.send(SFTP.cancel, transferId),
+    transfers: () => ipcRenderer.invoke(SFTP.transfers),
+    onEvent: (cb) => {
+      const handler = (
+        _e: IpcRendererEvent,
+        snapshot: import("@shared/sftp").SftpTransferSnapshot,
+      ) => cb(snapshot);
+      ipcRenderer.on(SFTP.event, handler);
+      return () => ipcRenderer.removeListener(SFTP.event, handler);
     },
   },
   getPathForFile: (file) => webUtils.getPathForFile(file as File),

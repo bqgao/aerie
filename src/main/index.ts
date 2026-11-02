@@ -13,6 +13,9 @@ import { createServerCredentialStore } from "./servers/credentials";
 import { createConnectionManager } from "./servers/connection-manager";
 import { createSshClientFactory } from "./servers/ssh2-factory";
 import { createRemoteTransport } from "./servers/remote-transport";
+import { createSftpService } from "./servers/sftp-service";
+import { registerSftpIpc } from "./servers/sftp-ipc";
+import type { SftpService } from "./servers/sftp-service";
 import { isHttpUrl } from "./open-external";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -116,6 +119,11 @@ function createWindow(
    *  ssh terminal IPC registers below. Declared before the pool (which needs it for onDown), so
    *  drops recorded before the first window opens are absorbed by this no-op. */
   sshTerminalDown?: { noteDown: (serverId: string) => void },
+  /** F: the app-level SFTP session service (transfers + ops) for the file-manager pane. */
+  sftpService?: SftpService,
+  /** F: a holder the pool's onDown composition calls into — filled when the sftp IPC registers
+   *  below (same pattern as sshTerminalDown). */
+  sftpDown?: { noteDown: (serverId: string) => void },
 ): void {
   // The renderer header is a fixed HEADER_HEIGHT_PX tall and doubles as the title bar. On macOS we hide
   // the native title bar but KEEP the traffic lights (titleBarStyle 'hidden', never frame:false — the
@@ -199,6 +207,14 @@ function createWindow(
       connectionManager,
     });
     sshTerminalDown.noteDown = noteDown;
+  }
+
+  // The file-manager pane: the `servers:sftp:*` family over the app-level service. Its noteDown
+  // rides the same pool onDown composition (below), so a drop fails every active transfer of
+  // that server as "dropped"/retryable.
+  if (connectionManager && sftpService && sftpDown) {
+    const { noteDown } = registerSftpIpc({ window: win, service: sftpService });
+    sftpDown.noteDown = noteDown;
   }
 
   win.on("closed", () => registerRename(() => {}));
@@ -314,8 +330,15 @@ app
       onDown: (id) => {
         remoteTransport.teardown(id);
         sshTerminalDown.noteDown(id);
+        sftpDownHolder.noteDown(id);
       },
     });
+    // F: the file manager's SFTP session service (app-level: transfers outlive window toggles,
+    // die with the pool on drop, and die with the app on quit through its own before-quit).
+    const sftpService = createSftpService({ connectionManager });
+    const sftpDownHolder: { noteDown: (serverId: string) => void } = {
+      noteDown: (id) => sftpService.noteDown(id),
+    };
     // The Pass R remote transport: tunnels + serve health over the S1 pool, passing the serve
     // password straight from the credential store (never through a log or status line).
     // S2: connection drops ALSO end every ssh terminal riding that server ("dropped") — the
@@ -358,6 +381,8 @@ app
         resolveRemoteSpawn,
         connectionManager,
         sshTerminalDown,
+        sftpService,
+        sftpDownHolder,
       );
     openWindow();
     app.on("activate", () => {

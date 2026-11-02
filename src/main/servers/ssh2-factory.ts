@@ -66,6 +66,12 @@ export function createSshClientFactory(): SshClientFactory {
         client.shell(window, (err, stream) => {
           cb(err, err || !stream ? null : stream);
         }),
+      // F, the file-manager leg: the SFTP subsystem channel on the same client. Same
+      // no-cast passthrough (the ambient SftpClient satisfies SftpChannel structurally).
+      sftp: (cb) =>
+        client.sftp((err, sftp) => {
+          cb(err, err || !sftp ? null : sftp);
+        }),
     };
     return rpc;
   };

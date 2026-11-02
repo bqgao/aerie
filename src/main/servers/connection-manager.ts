@@ -41,6 +41,13 @@ export interface SshClientRpc {
     window: SshShellWindow | undefined,
     cb: (err: Error | undefined, stream: SshShellStream | null) => void,
   ): void;
+  /** F: open the SFTP subsystem channel on the live client — the file manager's operations ride
+   *  the SAME pooled client as shells/tunnels/execs. Optional at the seam (same pattern as
+   *  shell): a pool-level fake that never opens subsystem channels stays valid; the real factory
+   *  always provides it, and callers guard for absence. */
+  sftp?(
+    cb: (err: Error | undefined, sftp: SftpChannel | null) => void,
+  ): void;
 }
 
 /** The shell-window request the ssh terminal sends (narrowed from ssh2's PseudoTerminalOptions):
@@ -69,6 +76,64 @@ export interface SshShellStream {
    *  is how a shell exit is told apart from a hard drop (which skips `exit` entirely). */
   on(event: "exit", cb: () => void): void;
   on(event: "close", cb: (err?: Error) => void): void;
+}
+
+/** The live SFTP channel, narrowed to exactly the operations the file manager drives (the real
+ *  ssh2 SftpClient satisfies this structurally — declared ambient in ssh2-types.d.ts). Handles
+ *  are opaque (SFTPv3 file handles); errors arrive as `Error`s whose MESSAGE carries the server's
+ *  SFTP status text (e.g. "no such file"), never typed codes — the service matches patterns. */
+export interface SftpChannel {
+  open(
+    path: string,
+    flags: string,
+    cb: (err: Error | undefined, handle: unknown) => void,
+  ): void;
+  read(
+    handle: unknown,
+    buffer: Buffer,
+    offset: number,
+    length: number,
+    position: number | null,
+    cb: (err: Error | undefined, bytesRead: number) => void,
+  ): void;
+  write(
+    handle: unknown,
+    buffer: Buffer,
+    offset: number,
+    length: number,
+    position: number | null,
+    cb: (err: Error | undefined, written: number) => void,
+  ): void;
+  close(handle: unknown, cb: (err: Error | undefined) => void): void;
+  readdir(
+    path: string,
+    cb: (err: Error | undefined, list: SftpListEntry[]) => void,
+  ): void;
+  stat(path: string, cb: (err: Error | undefined, attrs: SftpAttrs) => void): void;
+  mkdir(path: string, cb: (err: Error | undefined) => void): void;
+  rename(srcPath: string, destPath: string, cb: (err: Error | undefined) => void): void;
+  unlink(filename: string, cb: (err: Error | undefined) => void): void;
+  rmdir(path: string, cb: (err: Error | undefined) => void): void;
+  realpath(path: string, cb: (err: Error | undefined, abspath: string) => void): void;
+  /** A client-side channel teardown (closes any open handles with "channel closed"-style errors). */
+  end(): void;
+}
+
+/** readdir row, narrowed from ssh2's FileEntry (filename + attributes; longname is unused). */
+export interface SftpListEntry {
+  filename: string;
+  attrs: SftpAttrs;
+}
+
+/** stat/readdir attributes, narrowed from ssh2's EntryAttributes (numbers + the predicates). */
+export interface SftpAttrs {
+  mode?: number;
+  size: number;
+  /** SECONDS since epoch — SFTPv3 timestamps are seconds; convert to ms host-side. */
+  mtime: number;
+  isDirectory(): boolean;
+  isFile(): boolean;
+  isSymbolicLink(): boolean;
 }
 
 /** The dial-time config, narrowed to the exact fields this pool sets (ssh2's ConnectConfig is
