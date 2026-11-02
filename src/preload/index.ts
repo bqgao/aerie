@@ -220,6 +220,10 @@ const api: AppApi = {
   sftp: {
     list: (serverId, dir) => ipcRenderer.invoke(SFTP.list, serverId, dir),
     stat: (serverId, path) => ipcRenderer.invoke(SFTP.stat, serverId, path),
+    readFile: (serverId, path) =>
+      ipcRenderer.invoke(SFTP.readFile, serverId, path),
+    writeFile: (serverId, path, content) =>
+      ipcRenderer.invoke(SFTP.writeFile, serverId, path, content),
     home: (serverId) => ipcRenderer.invoke(SFTP.home, serverId),
     mkdir: (serverId, path) => ipcRenderer.invoke(SFTP.mkdir, serverId, path),
     createFile: (serverId, path) =>

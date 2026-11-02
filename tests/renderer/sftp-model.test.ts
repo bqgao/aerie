@@ -17,7 +17,6 @@ import {
 import {
   $sftpClipboard,
   $sftpServerId,
-  setSftpServer,
 } from "../../src/renderer/src/shell/sftp/sftp-store";
 import type { SftpEntry } from "@shared/sftp";
 

@@ -27,6 +27,9 @@ export const SFTP = {
   cancel: "servers:sftp:cancel",
   transfers: "servers:sftp:transfers",
   event: "servers:sftp:event",
+  /** Pass I-a: the editor pane's in-place server reads/writes (same channel cache). */
+  readFile: "servers:sftp:readFile",
+  writeFile: "servers:sftp:writeFile",
 } as const;
 
 /** One directory entry, normalized main-side from an sftp readdir + attrs. */
@@ -50,6 +53,16 @@ export type SftpListResult =
 export type SftpStatResult =
   | { ok: true; entry: SftpEntry }
   | { ok: false; error: string; notFound?: boolean };
+
+/** Pass I-a: the editor's server-file read — UTF-8, capped at the first 512KiB (the sniff +
+ *  cap both run SERVER-side of the IPC boundary, so binary payloads never cross). Bytes = the
+ *  slice's byte length. Failures carry the usual `notFound` crumb plus `binary` when the NUL
+ *  sniff fired, so the renderer can key its message view from either. */
+export const SFTP_FILE_CAP_BYTES = 512 * 1024;
+
+export type SftpFileReadResult =
+  | { ok: true; content: string; bytes: number; capped: boolean }
+  | { ok: false; error: string; notFound?: boolean; binary?: boolean };
 
 export type SftpFailure = { ok: false; error: string };
 export type SftpOk = { ok: true } | SftpFailure;
@@ -109,6 +122,12 @@ export function sftpTransferFraction(
 export interface SftpApi {
   list(serverId: string, dir: string): Promise<SftpListResult>;
   stat(serverId: string, path: string): Promise<SftpStatResult>;
+  /** Pass I-a (the editor pane): read one remote text file — stat-guarded, chunked over the
+   *  channel cache, 512KiB cap + NUL sniff server-side. Never rejects. */
+  readFile(serverId: string, path: string): Promise<SftpFileReadResult>;
+  /** Write one remote text file with SFTP "w" truncation (the upload's overwrite semantics);
+   *  a partial write answers a failure like an upload row does. Never rejects. */
+  writeFile(serverId: string, path: string, content: string): Promise<SftpOk>;
   /** Resolve the server's home directory (SFTPv3 realpath ".") — the pane's first context. */
   home(serverId: string): Promise<{ ok: true; path: string } | SftpFailure>;
   mkdir(serverId: string, path: string): Promise<SftpOk>;

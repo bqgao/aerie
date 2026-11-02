@@ -33,12 +33,14 @@ import type {
   SftpDeleteResult,
   SftpEntry,
   SftpFailure,
+  SftpFileReadResult,
   SftpListResult,
   SftpOk,
   SftpStatResult,
   SftpTransfer,
   SftpTransferSnapshot,
 } from "@shared/sftp";
+import { SFTP_FILE_CAP_BYTES } from "@shared/sftp";
 
 /** The chunked-transfer page (SFTPv3 packets are ≤32KiB; 256KiB amortizes round trips). */
 export const SFTP_CHUNK_BYTES = 256 * 1024;
@@ -201,6 +203,13 @@ export interface SftpDeps {
 export interface SftpService {
   list(serverId: string, dir: string): Promise<SftpListResult>;
   stat(serverId: string, path: string): Promise<SftpStatResult>;
+  /** Pass I-a (the editor pane): chunked in-place read over the channel cache with the same
+   *  stat/directory guard the file-manager ops use; the 512KiB cap + NUL sniff run here, so a
+   *  binary file's payload never crosses the IPC boundary. */
+  readFile(serverId: string, path: string): Promise<SftpFileReadResult>;
+  /** Pass I-a (the editor pane): chunked write with SFTP "w" truncation (the same overwrite
+   *  semantics as upload's Overwrite), claiming the handle exactly once per save. */
+  writeFile(serverId: string, path: string, content: string): Promise<SftpOk>;
   home(serverId: string): Promise<{ ok: true; path: string } | SftpFailure>;
   mkdir(serverId: string, path: string): Promise<SftpOk>;
   /** Create an empty remote file (the pane's New File…, riding the SFTP "w" open+close). */
@@ -853,6 +862,143 @@ export function createSftpService(deps: SftpDeps): SftpService {
         async (channel) => {
           const attrs = await statOf(channel, path);
           return { ok: true, entry: entryFrom(remoteBasename(path), attrs) };
+        },
+      );
+    },
+
+    /** Pass I-a: the editor pane's readFile — stat-guarded, chunked read of at most the
+     *  512KiB cap, NUL-sniffed server-side, returned as UTF-8. Never rejects. */
+    readFile(serverId, rawPath) {
+      const path = normalizeRemotePath(rawPath);
+      if (!path) {
+        return Promise.resolve<SftpFileReadResult>({
+          ok: false,
+          error: "Invalid path.",
+          notFound: true,
+        });
+      }
+      return runOp<SftpFileReadResult>(
+        serverId,
+        (message, opts) => ({
+          ok: false,
+          error: message,
+          notFound: opts?.notFound,
+        }),
+        async (channel) => {
+          let attrs: SftpAttrs;
+          try {
+            attrs = await statOf(channel, path);
+          } catch (err) {
+            return {
+              ok: false,
+              error: (err as Error).message,
+              ...(isNotFound(err as Error) ? { notFound: true } : {}),
+            };
+          }
+          if (attrs.isDirectory()) {
+            return { ok: false, error: "Path is not a file." };
+          }
+          const capped = attrs.size > SFTP_FILE_CAP_BYTES;
+          const readLength = Math.min(attrs.size, SFTP_FILE_CAP_BYTES);
+          if (readLength === 0) {
+            return { ok: true, content: "", bytes: 0, capped: false };
+          }
+          let handle: unknown;
+          try {
+            handle = await openHandle(channel, path, "r");
+          } catch (err) {
+            return { ok: false, error: (err as Error).message };
+          }
+          try {
+            const chunks: Buffer[] = [];
+            const buffer = Buffer.alloc(SFTP_CHUNK_BYTES);
+            let position = 0;
+            while (position < readLength) {
+              const length = Math.min(SFTP_CHUNK_BYTES, readLength - position);
+              const bytes = await readAt(
+                channel,
+                handle,
+                buffer,
+                length,
+                position,
+              );
+              if (bytes <= 0) {
+                // The server shrank under us between stat and read: serve what landed.
+                break;
+              }
+              if (chunks.length === 0) {
+                // First page carries the sniff window — a binary file stops right here,
+                // before ANY payload crosses the IPC boundary.
+                if (buffer.subarray(0, Math.min(8 * 1024, bytes)).includes(0)) {
+                  return {
+                    ok: false,
+                    error: "Binary file — not editable in this version.",
+                    binary: true,
+                  };
+                }
+              }
+              chunks.push(Buffer.from(buffer.subarray(0, bytes)));
+              position += bytes;
+            }
+            if (position === 0) {
+              return { ok: true, content: "", bytes: 0, capped: false };
+            }
+            const all = Buffer.concat(chunks);
+            return {
+              ok: true,
+              content: all.toString("utf8"),
+              bytes: all.length,
+              capped,
+            };
+          } finally {
+            await closeHandle(channel, handle);
+          }
+        },
+      );
+    },
+
+    /** Pass I-a: the editor pane's writeFile — chunked write with "w" truncation, one handle
+     *  per save, a partial page failing the op in-band (the target may then hold a torn
+     *  write — the failure is loud, exactly like an upload row). */
+    writeFile(serverId, rawPath, rawContent) {
+      const path = normalizeRemotePath(rawPath);
+      if (!path) {
+        return Promise.resolve<SftpOk>({ ok: false, error: "Invalid path." });
+      }
+      const content = typeof rawContent === "string" ? rawContent : "";
+      return runOp<SftpOk>(
+        serverId,
+        (message) => ({ ok: false, error: message }),
+        async (channel) => {
+          let handle: unknown;
+          try {
+            handle = await openHandle(channel, path, "w");
+          } catch (err) {
+            return { ok: false, error: (err as Error).message };
+          }
+          try {
+            const bytes = Buffer.from(content, "utf8");
+            let position = 0;
+            while (position < bytes.length) {
+              const length = Math.min(
+                SFTP_CHUNK_BYTES,
+                bytes.length - position,
+              );
+              const written = await writeAt(
+                channel,
+                handle,
+                bytes.subarray(position, position + length),
+                position,
+              );
+              if (written !== length) {
+                throw new Error("The server accepted a partial page.");
+              }
+              position += length;
+            }
+            return { ok: true };
+          } finally {
+            await closeHandle(channel, handle);
+          }
         },
       );
     },

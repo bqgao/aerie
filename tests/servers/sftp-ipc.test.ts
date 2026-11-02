@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SFTP, type SftpTransferSnapshot } from "../../src/shared/sftp";
 import type { SftpService } from "../../src/main/servers/sftp-service";
 
@@ -33,12 +33,23 @@ vi.mock("electron", () => ({
 import { registerSftpIpc } from "../../src/main/servers/sftp-ipc";
 
 /** Every service method is a vi.fn with a sane never-reject default; tests assert WHICH
- *  handlers route and with what shapes, not the service's logic (that's sftp-service's job). */
-const serviceMock: SftpService = {
+ *  handlers route and with what shapes, not the service's logic (that's sftp-service's job).
+ *  The raw fns live OUTSIDE the service-shaped object: SftpService's method signatures make
+ *  `fns.list` an unbound-method error, so assertions go through these plain fns. */
+const fns = {
   list: vi.fn(() =>
     Promise.resolve({ ok: true as const, entries: [], path: "/x" }),
   ),
   stat: vi.fn(() => Promise.resolve({ ok: false as const, error: "no" })),
+  readFile: vi.fn(() =>
+    Promise.resolve({
+      ok: true as const,
+      content: "x",
+      bytes: 1,
+      capped: false,
+    }),
+  ),
+  writeFile: vi.fn(() => Promise.resolve({ ok: true as const })),
   home: vi.fn(() => Promise.resolve({ ok: true as const, path: "/home" })),
   mkdir: vi.fn(() => Promise.resolve({ ok: true as const })),
   createFile: vi.fn(() => Promise.resolve({ ok: true as const })),
@@ -57,6 +68,7 @@ const serviceMock: SftpService = {
   noteDown: vi.fn(),
   disposeAll: vi.fn(),
 };
+const serviceMock = { ...fns } as unknown as SftpService;
 
 function wire() {
   const window = {
@@ -72,7 +84,7 @@ function wire() {
   };
   registerSftpIpc({
     window: window as never,
-    service: serviceMock as unknown as SftpService,
+    service: serviceMock,
   });
 }
 
@@ -105,13 +117,13 @@ describe("registerSftpIpc", () => {
     await expect(call(SFTP.list, "srv-1", 42)).resolves.toMatchObject({
       ok: false,
     });
-    expect(serviceMock.list).not.toHaveBeenCalled();
+    expect(fns.list).not.toHaveBeenCalled();
     await expect(call(SFTP.rename, "srv-1", "/a", 42)).resolves.toMatchObject({
       ok: false,
     });
-    expect(serviceMock.rename).not.toHaveBeenCalled();
+    expect(fns.rename).not.toHaveBeenCalled();
     await expect(call(SFTP.list, "srv-1", "/x")).resolves.toMatchObject({}); // passthrough service result
-    expect(serviceMock.list).toHaveBeenCalledWith("srv-1", "/x");
+    expect(fns.list).toHaveBeenCalledWith("srv-1", "/x");
   });
 
   it("download uses the save dialog for a single file; cancel = typed success with nothing queued", async () => {
@@ -123,7 +135,7 @@ describe("registerSftpIpc", () => {
       canceled: true,
     });
     expect(dialogCalls.save).toHaveBeenCalled();
-    expect(serviceMock.download).not.toHaveBeenCalled();
+    expect(fns.download).not.toHaveBeenCalled();
     dialogCalls.save.mockResolvedValue({
       canceled: false,
       filePath: "/tmp/dl/a-rename.txt",
@@ -131,7 +143,7 @@ describe("registerSftpIpc", () => {
     await expect(
       call(SFTP.download, "srv-1", ["/x/a.txt"]),
     ).resolves.toMatchObject({ ok: true });
-    expect(serviceMock.download).toHaveBeenCalledWith(
+    expect(fns.download).toHaveBeenCalledWith(
       "srv-1",
       ["/x/a.txt"],
       "/tmp/dl",
@@ -149,7 +161,7 @@ describe("registerSftpIpc", () => {
       call(SFTP.download, "srv-1", ["/x/a.txt", "/x/b.txt"]),
     ).resolves.toMatchObject({ ok: true });
     // Multi-select: no saveAs arg at all — the service names each file after its remote basename.
-    expect(serviceMock.download).toHaveBeenCalledWith(
+    expect(fns.download).toHaveBeenCalledWith(
       "srv-1",
       ["/x/a.txt", "/x/b.txt"],
       "/tmp/dl",
@@ -164,12 +176,12 @@ describe("registerSftpIpc", () => {
       skippedLocal: 0,
       canceled: true,
     });
-    expect(serviceMock.upload).not.toHaveBeenCalled();
+    expect(fns.upload).not.toHaveBeenCalled();
     await expect(
       call(SFTP.upload, "srv-1", "/x", ["/a.txt"], { overwrite: true }),
     ).resolves.toMatchObject({ ok: true });
     expect(dialogCalls.open).not.toHaveBeenCalledTimes(2);
-    expect(serviceMock.upload).toHaveBeenCalledWith("srv-1", "/x", ["/a.txt"], {
+    expect(fns.upload).toHaveBeenCalledWith("srv-1", "/x", ["/a.txt"], {
       overwrite: true,
     });
   });
@@ -177,22 +189,49 @@ describe("registerSftpIpc", () => {
   it("copy/delete/cancel/transfers ride straight through; the push mirrors the service", async () => {
     wire();
     await call(SFTP.copy, "srv-1", ["", 42, { from: "/a", to: "/b" }]);
-    expect(serviceMock.copy).toHaveBeenCalledWith("srv-1", [
-      { from: "/a", to: "/b" },
-    ]);
+    expect(fns.copy).toHaveBeenCalledWith("srv-1", [{ from: "/a", to: "/b" }]);
     await call(SFTP.deleteFn, "srv-1", ["/x", 42]);
-    expect(serviceMock.delete).toHaveBeenCalledWith("srv-1", ["/x"]);
+    expect(fns.delete).toHaveBeenCalledWith("srv-1", ["/x"]);
     fire(SFTP.cancel, "xfer-1");
-    expect(serviceMock.cancel).toHaveBeenCalledWith("xfer-1");
+    expect(fns.cancel).toHaveBeenCalledWith("xfer-1");
     await call(SFTP.transfers);
-    expect(serviceMock.transfers).toHaveBeenCalled();
+    expect(fns.transfers).toHaveBeenCalled();
   });
 
-  it("the transfer push rides window.webContents.send with the snapshot only", async () => {
+  it("the editor's readFile/writeFile route with server/path guards and a string-clamped content", async () => {
     wire();
-    const push = (serviceMock.setPush as unknown as Mock).mock.calls.at(
-      -1,
-    )?.[0] as ((snapshot: unknown) => void) | undefined;
+    await expect(call(SFTP.readFile, "", "/x")).resolves.toMatchObject({
+      ok: false,
+    });
+    expect(fns.readFile).not.toHaveBeenCalled();
+    await expect(call(SFTP.readFile, "srv-1", 42)).resolves.toMatchObject({
+      ok: false,
+    });
+    await expect(
+      call(SFTP.readFile, "srv-1", "/x/y.md"),
+    ).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(fns.readFile).toHaveBeenCalledWith("srv-1", "/x/y.md");
+
+    await expect(
+      call(SFTP.writeFile, "srv-1", "/x/y.md", "body"),
+    ).resolves.toMatchObject({ ok: true });
+    expect(fns.writeFile).toHaveBeenCalledWith("srv-1", "/x/y.md", "body");
+    await expect(
+      call(SFTP.writeFile, "srv-1", "/x/y.md", 42),
+    ).resolves.toMatchObject({
+      ok: true,
+    });
+    // A non-string payload clamps to "" at the bridge, never into the op:
+    expect(fns.writeFile).toHaveBeenLastCalledWith("srv-1", "/x/y.md", "");
+  });
+
+  it("the transfer push rides window.webContents.send with the snapshot only", () => {
+    wire();
+    const push = fns.setPush.mock.calls.at(-1)?.[0] as
+      | ((snapshot: unknown) => void)
+      | undefined;
     expect(push).toBeTruthy();
     push?.([{ id: "t1" }]);
     expect(sendCalls.get(SFTP.event)).toHaveLength(1);

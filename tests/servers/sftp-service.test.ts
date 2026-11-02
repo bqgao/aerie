@@ -165,7 +165,6 @@ const attrsFile = (size: number) => ({
 });
 
 const errNotFound = (): Error => new Error("No such file");
-const errDenied = (): Error => new Error("Permission denied");
 
 function wire(channelOpts: {
   channel: SftpChannel | null;
@@ -214,16 +213,18 @@ const memoryLocalIo = (): MemoryLocal => {
     },
     writer(path) {
       return {
-        write: async (chunk) => {
+        write: (chunk) => {
           files.set(
             path,
             Buffer.concat([files.get(path) ?? Buffer.alloc(0), chunk]),
           );
+          return Promise.resolve();
         },
-        finish: async () => {},
-        abort: async () => {
+        finish: () => Promise.resolve(),
+        abort: () => {
           files.delete(path);
           removed.push(path);
+          return Promise.resolve();
         },
       };
     },
@@ -232,11 +233,13 @@ const memoryLocalIo = (): MemoryLocal => {
       if (!bytes) return null;
       return {
         size: bytes.length,
-        read: async (buffer, pos) => {
+        read: (buffer, pos) => {
           const taken = Math.min(buffer.byteLength, bytes.length - pos);
-          if (taken <= 0) return 0;
-          bytes.copy(buffer, 0, pos, pos + taken);
-          return taken;
+          const slice =
+            taken <= 0 || pos >= bytes.length
+              ? 0
+              : (bytes.copy(buffer, 0, pos, pos + taken), taken);
+          return Promise.resolve(slice);
         },
         close: () => {},
       };
@@ -307,7 +310,7 @@ describe("createSftpService", () => {
   });
 
   it("delete of a non-empty directory is RECURSIVE with per-child warnings collected", async () => {
-    const { channel, state } = fakeChannel();
+    const { state } = fakeChannel();
     // The scripted dir tree, with one per-child failure to verify collection.
     state.dirs.set("/srv/root", [
       { filename: "sub", isDir: true, size: 0, mtime: 0 },
@@ -383,7 +386,6 @@ describe("createSftpService", () => {
     const fake = fakeChannel();
     const { channel } = fake;
     fake.state.files.set("/srv/big.bin", Buffer.alloc(256 * 1024 + 128, 9));
-    const bytes = Buffer.alloc(256 * 1024, 9);
     const local = memoryLocalIo();
     // Holder object: a let captured by the executor stays narrowed to null in
     // straight-line code (TS#9998), which breaks the firstPage?.() release below.
@@ -534,5 +536,137 @@ describe("createSftpService", () => {
     expect(state.files.get("/dst/file.bin")).toEqual(
       state.files.get("/src/file.bin"),
     );
+  });
+
+  it("readFile returns a small file's UTF-8 content round-tripped through the fake", async () => {
+    const { channel, state } = fakeChannel();
+    state.files.set("/srv/hello.md", Buffer.from("héllo **世界**\n", "utf8"));
+    const { service } = wire({ channel });
+    const res = await service.readFile(REQ, "/srv/hello.md");
+    expect(res).toEqual({
+      ok: true,
+      content: "héllo **世界**\n",
+      bytes: 18,
+      capped: false,
+    });
+  });
+
+  it("readFile caps at 512KiB with capped:true and serves the first page window", async () => {
+    const { channel, state } = fakeChannel();
+    state.files.set(
+      "/srv/big.log",
+      Buffer.from("x".repeat(513 * 1024), "utf8"),
+    );
+    const { service } = wire({ channel });
+    const res = await service.readFile(REQ, "/srv/big.log");
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.capped).toBe(true);
+      expect(res.bytes).toBe(512 * 1024);
+      expect(res.content).toBe("x".repeat(512 * 1024));
+    }
+  });
+
+  it("readFile sniffs a NUL byte in the first 8KiB and answers binary in-band", async () => {
+    const { channel, state } = fakeChannel();
+    state.files.set(
+      "/srv/run.bin",
+      Buffer.concat([Buffer.from("AB", "utf8"), Buffer.alloc(1)]),
+    );
+    const { service } = wire({ channel });
+    const res = await service.readFile(REQ, "/srv/run.bin");
+    expect(res).toMatchObject({ ok: false, binary: true });
+  });
+
+  it("readFile answers notFound on a missing file, flags directories, and guards paths", async () => {
+    const { channel, state } = fakeChannel();
+    state.dirs.set("/srv/dir", []);
+    const { service } = wire({ channel });
+    await expect(
+      service.readFile(REQ, "/srv/missing.txt"),
+    ).resolves.toMatchObject({
+      ok: false,
+      notFound: true,
+    });
+    await expect(service.readFile(REQ, "/srv/dir")).resolves.not.toMatchObject({
+      ok: true,
+    });
+    await expect(service.readFile(REQ, "")).resolves.toMatchObject({
+      ok: false,
+      notFound: true,
+    });
+  });
+
+  it("readFile on an unconnected server answers the typed in-band failure", async () => {
+    const { service } = wire({ channel: null });
+    await expect(service.readFile(REQ, "/x")).resolves.toMatchObject({
+      ok: false,
+      error: "The server is not connected.",
+    });
+  });
+
+  it('writeFile truncates ("w" open) and chunks large payloads at 256KiB pages', async () => {
+    const { channel, state } = fakeChannel();
+    state.files.set("/srv/exists.txt", Buffer.alloc(10, 1));
+    const { service } = wire({ channel });
+    // Small save first: the overwrite opens "w" (the truncate is the flag, the fake keeps the
+    // merged length, so the truncation contract is asserted on the open flags record).
+    await expect(
+      service.writeFile(REQ, "/srv/exists.txt", "small"),
+    ).resolves.toEqual({ ok: true });
+    expect(state.opens).toContainEqual({ path: "/srv/exists.txt", flags: "w" });
+    expect(state.writes[0]).toMatchObject({
+      path: "/srv/exists.txt",
+      position: 0,
+      bytes: 5,
+    });
+
+    // 300KB content → two pages at positions 0 and 262144 (the SFTP_CHUNK_BYTES pump page).
+    const big = "y".repeat(300 * 1024);
+    const writesBefore = state.writes.length;
+    await expect(service.writeFile(REQ, "/srv/big.txt", big)).resolves.toEqual({
+      ok: true,
+    });
+    const bigWrites = state.writes.slice(writesBefore);
+    expect(bigWrites.map((w) => w.position)).toEqual([0, 256 * 1024]);
+    expect(bigWrites.map((w) => w.bytes)).toEqual([
+      256 * 1024,
+      300 * 1024 - 256 * 1024,
+    ]);
+  });
+
+  it("writeFile fails a partial page in-band and never fabricates success", async () => {
+    const fake = fakeChannel();
+    const flaky: SftpChannel = {
+      ...fake.channel,
+      // Any page past the first one comes back a byte short (the fake's own cb order):
+      write(handle, buffer, offset, length, position, cb) {
+        if (position !== null && position > 0) {
+          cb(undefined, length - 1);
+          return;
+        }
+        fake.channel.write(handle, buffer, offset, length, position, cb);
+      },
+    };
+    const { service } = wire({ channel: flaky });
+    const res = await service.writeFile(
+      REQ,
+      "/srv/partial.txt",
+      "z".repeat(256 * 1024 + 8),
+    );
+    expect(res).toMatchObject({
+      ok: false,
+      error: "The server accepted a partial page.",
+    });
+  });
+
+  it("the editor save rides one handle per save: write then read round-trips", async () => {
+    const { channel, state } = fakeChannel();
+    const { service } = wire({ channel });
+    await service.writeFile(REQ, "/srv/note.md", "# Title\n");
+    const res = await service.readFile(REQ, "/srv/note.md");
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.content).toBe("# Title\n");
+    expect(state.opens.map((o) => o.flags)).toEqual(["w", "r"]);
   });
 });

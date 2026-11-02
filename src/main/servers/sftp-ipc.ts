@@ -70,6 +70,32 @@ export function registerSftpIpc({
     return service.home(serverId);
   });
 
+  ipcMain.handle(
+    SFTP.readFile,
+    (_e, rawServerId: unknown, rawPath: unknown) => {
+      const serverId = requireServer(rawServerId);
+      if (!serverId || typeof rawPath !== "string") {
+        return Promise.resolve({ ok: false, error: "Invalid request." });
+      }
+      return service.readFile(serverId, rawPath);
+    },
+  );
+
+  ipcMain.handle(
+    SFTP.writeFile,
+    (_e, rawServerId: unknown, rawPath: unknown, rawContent: unknown) => {
+      const serverId = requireServer(rawServerId);
+      if (!serverId || typeof rawPath !== "string") {
+        return Promise.resolve({ ok: false, error: "Invalid request." });
+      }
+      return service.writeFile(
+        serverId,
+        rawPath,
+        typeof rawContent === "string" ? rawContent : "",
+      );
+    },
+  );
+
   ipcMain.handle(SFTP.mkdir, (_e, rawServerId: unknown, rawPath: unknown) => {
     const serverId = requireServer(rawServerId);
     if (!serverId || typeof rawPath !== "string") {
@@ -241,6 +267,8 @@ export function registerSftpIpc({
       SFTP.upload,
       SFTP.copy,
       SFTP.transfers,
+      SFTP.readFile,
+      SFTP.writeFile,
     ] as const) {
       ipcMain.removeHandler(channel);
     }
