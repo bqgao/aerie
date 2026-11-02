@@ -31,6 +31,7 @@ import {
   type OpenCodeClient,
   type OpencodeMessageRow,
   type OpencodeSessionRow,
+  type Paged,
 } from "./client";
 import type { OpenCodeServiceEndpoint, ServiceDiscovery } from "./service";
 
@@ -256,23 +257,32 @@ export function createOpenCodeProvider(
   // to decide waiting (tier-1 spec Run 2 / A5): the last message being from the assistant means
   // the agent's turn ended and the session now needs the user. Cached by the row's own change
   // token (`time.updated`), so each row version probes once however many passes watch it; a
-  // failed probe is never cached — it repeats next pass. Remote rows are never probed (their
-  // aliveness comes from the active map / freshness only).
+  // failed probe is never cached — it repeats next pass. The SAME mechanism covers REMOTE rows
+  // (tier-1 Run 2 / A5b): one `listMessages(limit=1)` call per row version through the row's own
+  // source transport, cache-keyed by the app-level id (bare locally, namespaced remotely), and
+  // gated to the shape the probe can actually decide (managed, past freshness, not in /active).
   const lastMessageType = new Map<
     string,
     { updated: number; type: "user" | "assistant" | null }
   >();
-  const probeLastMessage = async (
-    row: OpencodeSessionRow,
+  /** The shared probe core: cache op + last-row type extraction. `readLast` is the caller's
+   *  transport-owning read (the local service client, or the row's own remote source client);
+   *  failures degrade to null and are never cached. */
+  const probeFor = async (
+    appId: string,
+    updated: number,
+    readLast: () => Promise<Paged<OpencodeMessageRow> | null>,
   ): Promise<"user" | "assistant" | null> => {
-    const updated = row.time?.updated ?? 0;
-    const cached = lastMessageType.get(row.id);
+    const cached = lastMessageType.get(appId);
     if (cached && cached.updated === updated) return cached.type;
-    const page = await withClientRetry(false, (cl) =>
-      cl.listMessages(row.id, 1),
-    );
-    if (!page) {
-      lastMessageType.delete(row.id); // transient failure — never cache, never wedge waiting
+    let page: Paged<OpencodeMessageRow> | null;
+    try {
+      page = await readLast();
+    } catch {
+      page = null;
+    }
+    if (page === null) {
+      lastMessageType.delete(appId); // transient failure — never cache, never wedge waiting
       return null;
     }
     const first = page.data[0];
@@ -280,9 +290,16 @@ export function createOpenCodeProvider(
       first && (first.type === "user" || first.type === "assistant")
         ? first.type
         : null;
-    lastMessageType.set(row.id, { updated, type });
+    lastMessageType.set(appId, { updated, type });
     return type;
   };
+
+  const probeLastMessage = (
+    row: OpencodeSessionRow,
+  ): Promise<"user" | "assistant" | null> =>
+    probeFor(row.id, row.time?.updated ?? 0, () =>
+      withClientRetry(false, (cl) => cl.listMessages(row.id, 1)),
+    );
 
   const isRowFresh = (row: OpencodeSessionRow): boolean => {
     const updated = row.time?.updated;
@@ -305,11 +322,15 @@ export function createOpenCodeProvider(
       ? isRemoteActive(remote.serverId, remote.rawId)
       : activeAlive.has(row.id);
     const fresh = isRowFresh(row);
+    // Remote row versions live under their namespaced id in the shared probe cache.
+    const appKey = remote
+      ? namespacedId(remote.serverId, remote.rawId)
+      : row.id;
     const waiting =
       isManaged &&
       !active &&
       !fresh &&
-      lastMessageType.get(row.id)?.type === "assistant";
+      lastMessageType.get(appKey)?.type === "assistant";
     return {
       alive: isManaged || active || fresh,
       status: fresh ? "busy" : waiting ? "waiting" : undefined,
@@ -488,7 +509,20 @@ export function createOpenCodeProvider(
         if (row.parentID) continue; // subagent lanes stay Pass 2+, as on the local side
         const appId = namespacedId(source.serverId, row.id);
         if ((row.time?.updated ?? 0) < cutoff && !managed.has(appId)) continue;
-        const sig = signalsFor(row, managed.has(appId), {
+        // A5b: the remote waiting probe — same shape and budget as the local one (one
+        // limit=1 read per row version through THIS source's own transport, managed rows
+        // outside /active and past freshness only); a failure never caches or crashes the sweep.
+        const isRemoteManaged = managed.has(appId);
+        if (
+          isRemoteManaged &&
+          !actives.has(row.id) &&
+          !isRowFresh(row) // fresh-owned rows are busy no matter the tail
+        ) {
+          await probeFor(appId, row.time?.updated ?? 0, () =>
+            client.listMessages(row.id, 1),
+          );
+        }
+        const sig = signalsFor(row, isRemoteManaged, {
           serverId: source.serverId,
           rawId: row.id,
         });

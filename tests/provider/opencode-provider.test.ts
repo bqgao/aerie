@@ -449,6 +449,171 @@ function messageRequests(requests: string[]): string[] {
   );
 }
 
+describe("remote waiting signals (tier-1 Run 2 / A5b)", () => {
+  // The remote side of the shared waiting probe: same last-message contract, one
+  // listMessages(limit=1) call per row version through the row's OWN source transport.
+  const SRV = {
+    serverId: "srv-1",
+    baseUrl: "http://127.0.0.1:45679",
+    password: "p2",
+  };
+  const srvPort = "45679";
+  const APP_ID = `srv-1:${ROOT.id}`;
+  const STALE_NOW = (ROOT.time?.updated ?? 0) + 60_000;
+  const FRESH_NOW = (ROOT.time?.updated ?? 0) + 5_000;
+
+  /** The probe calls that went through THIS source's transport (the local service's own sweep
+   *  and probes ride 49374 in these tests — filter them out of the remote assertions). */
+  const srvMessages = (requests: string[]) =>
+    requests.filter((u) => u.includes(srvPort) && u.includes("/message"));
+
+  function remoteProvider(opts: {
+    nowMs: number;
+    /** The row that answers the probe's limit=1 message read for ROOT. */
+    last?: unknown[];
+    /** Raw ids the source's /active map owns this sweep. */
+    active?: string[];
+    managed?: boolean;
+    /** The source's sweeps themselves fail (transport down/serve gone). */
+    sourceDown?: boolean;
+  }) {
+    const requests: string[] = [];
+    const fetchFn = (url: string): Promise<Response> => {
+      requests.push(url);
+      const remote = url.startsWith(SRV.baseUrl);
+      // The LOCAL sweep's simplified shape: plain session list + empty active map.
+      if (!remote) {
+        if (url.includes("/session/active"))
+          return Promise.resolve(
+            new Response(JSON.stringify({ data: {} }), { status: 200 }),
+          );
+        if (url.includes("/message"))
+          return Promise.resolve(
+            new Response(JSON.stringify({ data: [], cursor: null }), {
+              status: 200,
+            }),
+          );
+        return Promise.resolve(
+          new Response(JSON.stringify({ data: [ROOT], cursor: null }), {
+            status: 200,
+          }),
+        );
+      }
+      if (opts.sourceDown) return Promise.reject(new Error("ECONNREFUSED"));
+      if (url.includes("/message"))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ data: opts.last ?? [], cursor: null }),
+            { status: 200 },
+          ),
+        );
+      if (url.includes("/session/active"))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: Object.fromEntries(
+                (opts.active ?? []).map((id) => [id, { type: "running" }]),
+              ),
+            }),
+            { status: 200 },
+          ),
+        );
+      return Promise.resolve(
+        new Response(JSON.stringify({ data: [ROOT], cursor: null }), {
+          status: 200,
+        }),
+      );
+    };
+    const p = createOpenCodeProvider({
+      service: fakeService(BASE),
+      fetchFn,
+      now: () => opts.nowMs,
+      managed: { has: () => opts.managed ?? true },
+      remote: {
+        sources: () => Promise.resolve([SRV]),
+        homeDir: "/home/remote",
+      },
+    });
+    return { p, requests };
+  }
+
+  it("a managed remote row with an assistant-tailed last message and no /active membership waits", async () => {
+    const { p, requests } = remoteProvider({
+      nowMs: STALE_NOW,
+      last: [{ id: "m2", type: "assistant" }],
+    });
+    const remote = (await p.listCandidates()).find((c) => c.id === APP_ID);
+    // The probe rode the row's OWN source transport (srv-1's base URL, not the local service's).
+    const srv = srvMessages(requests);
+    expect(srv.length).toBeGreaterThan(0);
+    expect(remote).toMatchObject({ alive: true, status: "waiting" });
+    expect(await p.summarize(remote!)).toMatchObject({
+      state: "waiting",
+      waitingReason: "Turn complete",
+      awaitingUser: true,
+    });
+  });
+
+  it("/active ownership still wins: a remote row the server owns never waits", async () => {
+    const { p, requests } = remoteProvider({
+      nowMs: STALE_NOW,
+      last: [{ id: "m2", type: "assistant" }],
+      active: [ROOT.id],
+    });
+    const remote = (await p.listCandidates()).find((c) => c.id === APP_ID);
+    expect(remote).toMatchObject({ alive: true });
+    expect(remote?.status).toBeUndefined();
+    expect(srvMessages(requests)).toHaveLength(0); // the probe never fires for owned rows
+  });
+
+  it("a freshness-held remote row stays busy without probing", async () => {
+    const { p, requests } = remoteProvider({
+      nowMs: FRESH_NOW,
+      last: [{ id: "m2", type: "assistant" }],
+    });
+    const remote = (await p.listCandidates()).find((c) => c.id === APP_ID);
+    expect(remote?.status).toBe("busy");
+    expect(srvMessages(requests)).toHaveLength(0);
+  });
+
+  it("probes each remote row version once — the cache rides time.updated", async () => {
+    const { p, requests } = remoteProvider({
+      nowMs: STALE_NOW,
+      last: [{ id: "m2", type: "assistant" }],
+    });
+    await p.listCandidates();
+    await p.listCandidates();
+    expect(
+      srvMessages(requests).filter((u) => u.includes(ROOT.id)),
+    ).toHaveLength(1);
+    const remote = (await p.listCandidates()).find((c) => c.id === APP_ID);
+    expect(remote?.status).toBe("waiting");
+  });
+
+  it("an unreachable remote source skips the probe entirely and yields no remote candidates — never a crash", async () => {
+    const { p, requests } = remoteProvider({
+      nowMs: STALE_NOW,
+      last: [{ id: "m2", type: "assistant" }],
+      sourceDown: true,
+    });
+    const cands = await p.listCandidates();
+    expect(cands.some((c) => c.id.includes("srv-1"))).toBe(false);
+    expect(srvMessages(requests)).toHaveLength(0);
+  });
+
+  it("unmanaged remote rows are excluded per the existing liveness rule", async () => {
+    const { p, requests } = remoteProvider({
+      nowMs: STALE_NOW,
+      last: [{ id: "m2", type: "assistant" }],
+      managed: false,
+    });
+    const remote = (await p.listCandidates()).find((c) => c.id === APP_ID);
+    expect(remote?.alive).toBe(false);
+    expect(remote?.status).toBeUndefined();
+    expect(srvMessages(requests)).toHaveLength(0);
+  });
+});
+
 describe("opencode prompt op (tier-1 Run 2 / A4)", () => {
   it("POSTs the text envelope and succeeds on the verified contract", async () => {
     const service = fakeService(BASE);
