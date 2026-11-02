@@ -377,7 +377,11 @@ app
     const pdfTempService = createPdfTempService({
       dir: () => join(app.getPath("userData"), "cache", "pdf"),
       remote: createPdfTempRemote(connectionManager, (message) =>
-        logWarn("pdftemp-remote-fault", "the pdf temp pull hit a channel-level error", message),
+        logWarn(
+          "pdftemp-remote-fault",
+          "the pdf temp pull hit a channel-level error",
+          message,
+        ),
       ),
     });
     app.on("will-quit", () => void pdfTempService.sweep());

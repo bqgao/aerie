@@ -32,8 +32,14 @@ import { normalizeRemotePath } from "@shared/sftp-paths";
  *  existence/size probes the cache-key step needs, and a best-effort teardown. */
 export interface PdfTempFs {
   mkdirp(path: string): Promise<void>;
-  writeNew(path: string, bytes: Buffer): Promise<{ ok: true } | { ok: false; message: string }>;
-  rename(from: string, to: string): Promise<{ ok: true } | { ok: false; message: string }>;
+  writeNew(
+    path: string,
+    bytes: Buffer,
+  ): Promise<{ ok: true } | { ok: false; message: string }>;
+  rename(
+    from: string,
+    to: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }>;
   exists(path: string): Promise<boolean>;
   removeQuiet(path: string): Promise<void>;
   /** The sweep's walking of one directory's regular files; null = the dir itself is gone. */
@@ -52,7 +58,10 @@ export const realPdfTempFs: PdfTempFs = {
       await writeFile(path, bytes, { flag: "w" });
       return { ok: true };
     } catch (err) {
-      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      };
     }
   },
   async rename(from, to) {
@@ -61,7 +70,10 @@ export const realPdfTempFs: PdfTempFs = {
       await rename(from, to);
       return { ok: true };
     } catch (err) {
-      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      };
     }
   },
   async exists(path) {
@@ -148,7 +160,10 @@ export function createPdfTempRemote(
           }
           rpc.sftp((err, sftp) => {
             if (err || !sftp) {
-              resolve({ ok: false, message: err?.message ?? "Could not open the SFTP channel." });
+              resolve({
+                ok: false,
+                message: err?.message ?? "Could not open the SFTP channel.",
+              });
               return;
             }
             resolve({ ok: true, sftp: sftp as SftpLike });
@@ -179,7 +194,9 @@ export function createPdfTempRemote(
     });
   const openHandle = (sftp: SftpLike, path: string): Promise<unknown> =>
     new Promise((resolve, reject) => {
-      sftp.open(path, "r", (err, handle) => (err ? reject(err) : resolve(handle)));
+      sftp.open(path, "r", (err, handle) =>
+        err ? reject(err) : resolve(handle),
+      );
     });
   const readAt = (
     sftp: SftpLike,
@@ -193,7 +210,10 @@ export function createPdfTempRemote(
         err ? reject(err) : resolve(n),
       );
     });
-  const closeHandle = async (sftp: SftpLike, handle: unknown): Promise<void> => {
+  const closeHandle = async (
+    sftp: SftpLike,
+    handle: unknown,
+  ): Promise<void> => {
     try {
       await new Promise<void>((resolve) => sftp.close(handle, () => resolve()));
     } catch {
@@ -202,42 +222,53 @@ export function createPdfTempRemote(
   };
   return {
     async sizeOf(serverId, path) {
-      return runOp<{ ok: true; size: number } | { ok: false; message: string }>(serverId, async (sftp) => {
-        let attrs: SftpAttrsLike;
-        try {
-          attrs = await statOf(sftp, path);
-        } catch (err) {
-          const e = asError(err);
-          onError?.(e.message);
-          return { ok: false, ...(ENOENT_RE.test(e.message) ? { notFound: true } : {}), message: e.message };
-        }
-        if (attrs.isDirectory()) {
-          return { ok: false, message: "Path is not a file." };
-        }
-        return { ok: true, size: attrs.size };
-      });
-    },
-    async readPage(serverId, path, position, length) {
-      return runOp<{ ok: true; buf: Buffer; bytes: number } | { ok: false; message: string }>(
+      return runOp<{ ok: true; size: number } | { ok: false; message: string }>(
         serverId,
         async (sftp) => {
-          let handle: unknown;
+          let attrs: SftpAttrsLike;
           try {
-            handle = await openHandle(sftp, path);
+            attrs = await statOf(sftp, path);
           } catch (err) {
             const e = asError(err);
             onError?.(e.message);
-            return { ok: false, ...(ENOENT_RE.test(e.message) ? { notFound: true } : {}), message: e.message };
+            return {
+              ok: false,
+              ...(ENOENT_RE.test(e.message) ? { notFound: true } : {}),
+              message: e.message,
+            };
           }
-          try {
-            const buf = Buffer.alloc(length);
-            const n = await readAt(sftp, handle, buf, position, length);
-            return { ok: true, buf, bytes: n };
-          } finally {
-            await closeHandle(sftp, handle);
+          if (attrs.isDirectory()) {
+            return { ok: false, message: "Path is not a file." };
           }
+          return { ok: true, size: attrs.size };
         },
       );
+    },
+    async readPage(serverId, path, position, length) {
+      return runOp<
+        | { ok: true; buf: Buffer; bytes: number }
+        | { ok: false; message: string }
+      >(serverId, async (sftp) => {
+        let handle: unknown;
+        try {
+          handle = await openHandle(sftp, path);
+        } catch (err) {
+          const e = asError(err);
+          onError?.(e.message);
+          return {
+            ok: false,
+            ...(ENOENT_RE.test(e.message) ? { notFound: true } : {}),
+            message: e.message,
+          };
+        }
+        try {
+          const buf = Buffer.alloc(length);
+          const n = await readAt(sftp, handle, buf, position, length);
+          return { ok: true, buf, bytes: n };
+        } finally {
+          await closeHandle(sftp, handle);
+        }
+      });
     },
   };
 }
@@ -245,7 +276,11 @@ export function createPdfTempRemote(
 /** The sftp shape the real pooled client hands back (ssh2's SftpClient, narrowed — the
  *  ambient ssh2-types.d.ts names it richer than this needs). */
 interface SftpLike {
-  open(path: string, flags: string, cb: (err: Error | undefined, handle: unknown) => void): void;
+  open(
+    path: string,
+    flags: string,
+    cb: (err: Error | undefined, handle: unknown) => void,
+  ): void;
   read(
     handle: unknown,
     buf: Buffer,
@@ -255,7 +290,10 @@ interface SftpLike {
     cb: (err: Error | undefined, bytesRead: number) => void,
   ): void;
   close(handle: unknown, cb: (err: Error | undefined) => void): void;
-  stat(path: string, cb: (err: Error | undefined, attrs: SftpAttrsLike) => void): void;
+  stat(
+    path: string,
+    cb: (err: Error | undefined, attrs: SftpAttrsLike) => void,
+  ): void;
 }
 interface SftpAttrsLike {
   size: number;
@@ -288,28 +326,42 @@ export interface PdfTempService {
 }
 
 /** Build a `file://` URL for an absolute local path (the renderer's webview src). Callers
- *  never string-concat this — percent-encoding lives here, one definition. */
+ *  never string-concat this — percent-encoding lives here, one definition. Only the
+ *  URL-breaking characters encode (`%`, `#`, `?`, spaces, non-ASCII); the RFC's unreserved
+ *  + sub-delim set stays literal, and the empty host keeps `file:///` rooted even where an
+ *  absolute path carries no leading slash (Windows drives). */
 export function pdfFileUrlOf(abs: string): string {
   const forward = abs.replace(/\\/g, "/");
-  const segments = forward.split("/").map((seg) =>
-    seg === "" ? "" : encodeURIComponent(seg),
-  );
-  return `file://${segments.join("/")}`;
+  const segments = forward.split("/");
+  if (segments[0] !== "") segments.unshift("");
+  return `file://${segments
+    .map((seg) =>
+      seg.replace(/[^A-Za-z0-9\-.~_!$&'()*+,;=:]/g, (c) =>
+        encodeURIComponent(c),
+      ),
+    )
+    .join("/")}`;
 }
 
 export function createPdfTempService(deps: PdfTempDeps): PdfTempService {
   const fs = deps.fs ?? realPdfTempFs;
-  const hash = deps.hash ?? ((buf: Buffer) => createHash("sha256").update(buf).digest("hex"));
+  const hash =
+    deps.hash ??
+    ((buf: Buffer) => createHash("sha256").update(buf).digest("hex"));
   const chunk = deps.chunkBytes ?? PDFTEMP_CHUNK_BYTES;
   const maxBytes = deps.maxBytes ?? PDFTEMP_MAX_BYTES;
   // "<serverId>:<path>" is refined to a normalized path before any SSH touch, matching the
   // SFTP family's input rule: the only remote path builder runs first.
-  const norm = (rawPath: unknown): string | null => normalizeRemotePath(
-    typeof rawPath === "string" ? rawPath : "",
-  );
+  const norm = (rawPath: unknown): string | null =>
+    normalizeRemotePath(typeof rawPath === "string" ? rawPath : "");
 
   // Staging uniqueness across same-ms pulls: pid + a monotonic local counter.
   let stagingSeq = 0;
+  /** The path→copy memo for ONE app run: a re-open of a path whose copy already landed
+   *  (the memo's stat size is validated against the live remote before reuse) answers the
+   *  cache without staging or pulling. Memory only — after a relaunch the content-hash dir
+   *  listing serves the same role, keyed by bytes rather than paths. */
+  const landed = new Map<string, { name: string; size: number }>();
 
   const openImpl = async (
     serverId: unknown,
@@ -322,10 +374,15 @@ export function createPdfTempService(deps: PdfTempDeps): PdfTempService {
     if (!path) {
       return { ok: false, error: "Invalid path." };
     }
+    const key = `${serverId}:${path}`;
     // The cap: the remote stat answers it before any byte moves (in-band refusal).
     const sized = await deps.remote.sizeOf(serverId, path);
     if (!sized.ok) {
-      return { ok: false, error: sized.message, ...(sized.notFound ? { notFound: true } : {}) };
+      return {
+        ok: false,
+        error: sized.message,
+        ...(sized.notFound ? { notFound: true } : {}),
+      };
     }
     if (sized.size > maxBytes) {
       return {
@@ -334,15 +391,37 @@ export function createPdfTempService(deps: PdfTempDeps): PdfTempService {
         tooLarge: true,
       };
     }
+    // The content-addressed short-circuit: a memo hit whose copy is still on disk and whose
+    // byte size matches the label's stat skips the pull entirely (the memo's size IS the
+    // landing's stat; a changed remote file with its own size falls through and re-pulls).
+    const landing = landed.get(key);
+    if (landing && landing.size === sized.size) {
+      const finalPath = nodePath.join(deps.dir(), landing.name);
+      if (await fs.exists(finalPath)) {
+        return {
+          ok: true,
+          fileUrl: pdfFileUrlOf(finalPath),
+          bytes: landing.size,
+          cached: true,
+        };
+      }
+      landed.delete(key);
+    }
     // Pull to a staging path, then content-address the final name. The cache dir must
     // exist before the staged write; the mkdir is per-open (it is idempotent and cheap).
     const dir = deps.dir();
     try {
       await fs.mkdirp(dir);
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
-    const staging = nodePath.join(dir, `staging-${process.pid}-${++stagingSeq}`);
+    const staging = nodePath.join(
+      dir,
+      `staging-${process.pid}-${++stagingSeq}`,
+    );
     let bytes: Buffer;
     if (sized.size === 0) {
       bytes = Buffer.alloc(0);
@@ -351,10 +430,19 @@ export function createPdfTempService(deps: PdfTempDeps): PdfTempService {
       let position = 0;
       while (position < sized.size) {
         const length = Math.min(chunk, sized.size - position);
-        const page = await deps.remote.readPage(serverId, path, position, length);
+        const page = await deps.remote.readPage(
+          serverId,
+          path,
+          position,
+          length,
+        );
         if (!page.ok) {
           await fs.removeQuiet(staging);
-          return { ok: false, error: page.message, ...(page.notFound ? { notFound: true } : {}) };
+          return {
+            ok: false,
+            error: page.message,
+            ...(page.notFound ? { notFound: true } : {}),
+          };
         }
         if (page.bytes <= 0) break; // the remote shrank mid-read: serve what landed
         chunks.push(Buffer.from(page.buf.subarray(0, page.bytes)));
@@ -373,14 +461,26 @@ export function createPdfTempService(deps: PdfTempDeps): PdfTempService {
     /** The cache dir is the app's own: absolute paths only by the dir() contract. */
     if (await fs.exists(finalPath)) {
       await fs.removeQuiet(staging);
-      return { ok: true, fileUrl: pdfFileUrlOf(finalPath), bytes: bytes.length, cached: true };
+      landed.set(key, { name: name, size: bytes.length });
+      return {
+        ok: true,
+        fileUrl: pdfFileUrlOf(finalPath),
+        bytes: bytes.length,
+        cached: true,
+      };
     }
     const moved = await fs.rename(staging, finalPath);
     if (!moved.ok) {
       await fs.removeQuiet(staging);
       return { ok: false, error: moved.message };
     }
-    return { ok: true, fileUrl: pdfFileUrlOf(finalPath), bytes: bytes.length, cached: false };
+    landed.set(key, { name: name, size: bytes.length });
+    return {
+      ok: true,
+      fileUrl: pdfFileUrlOf(finalPath),
+      bytes: bytes.length,
+      cached: false,
+    };
   };
 
   return {
