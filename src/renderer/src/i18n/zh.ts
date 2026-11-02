@@ -267,6 +267,15 @@ export const zh: Translations = {
       showMoreSessions: "显示更多",
       activeSessionsBadge: (count) => `${count} 进行中`,
       activeSessions: (count) => `${count} 个进行中的会话`,
+      // Run 1 (tier-1 spec / A1)：会话列表头部的「全部 / 收件箱」开关，以及收件箱的
+      // 空态与原因角标。
+      listModeLabel: "列表显示全部会话，或仅显示在等你的会话",
+      listModeAll: "全部",
+      listModeInbox: "收件箱",
+      inboxEmpty: "没有在等你的会话。",
+      reasonWaiting: "等待中",
+      reasonIdle: "空闲",
+      reasonPermission: (tool) => `等待授权：${tool}`,
     },
     sessionRow: {
       // Pass R: the remote-row server badge tooltip — name first, host after the dot.

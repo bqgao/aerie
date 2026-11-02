@@ -103,14 +103,20 @@ export function filterGroups(
   groups: SessionGroup[],
   preferences: SessionsListPreferences,
   query = "",
+  /** Optional extra narrowing on individual sessions (the rail's Inbox mode), composed ahead of
+   *  the search/agent filters so ancestor context stays retolvable over the group's full list. */
+  sessionPredicate?: (session: Session) => boolean,
 ): SessionGroup[] {
   const normalizedQuery = query.trim().toLowerCase();
+  const keep = (session: Session) =>
+    // Ended sessions are never filtered out (issue #431): a folder's own cap decides how much
+    // history it shows inline, so search, the agent preference, and the optional mode predicate
+    // (the rail's Inbox; ITS membership rules govern what it removes) are the only narrowing here.
+    (normalizedQuery === "" || sessionMatchesQuery(session, normalizedQuery)) &&
+    (preferences.agent === "all" || session.agent === preferences.agent) &&
+    (sessionPredicate?.(session) ?? true);
   const matchingGroups = groups.filter(
-    (group) =>
-      !normalizedQuery ||
-      group.sessions.some((session) =>
-        sessionMatchesQuery(session, normalizedQuery),
-      ),
+    (group) => !normalizedQuery || group.sessions.some(keep),
   );
   if (normalizedQuery) {
     const latestMatchByGroup = new Map(
@@ -129,16 +135,7 @@ export function filterGroups(
   }
   return matchingGroups.map((group) => ({
     ...group,
-    sessions: filterSessionsWithAncestors(group.sessions, (session) => {
-      const matchesQuery =
-        !normalizedQuery || sessionMatchesQuery(session, normalizedQuery);
-      // Ended sessions are never filtered out (issue #431): a folder's own cap decides how much
-      // history it shows inline, so search and the agent preference are the only narrowing here.
-      return (
-        matchesQuery &&
-        (preferences.agent === "all" || session.agent === preferences.agent)
-      );
-    }),
+    sessions: filterSessionsWithAncestors(group.sessions, keep),
   }));
 }
 

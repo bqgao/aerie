@@ -302,6 +302,15 @@ export const en = {
       activeSessionsBadge: (count: number) => `${count} live`,
       activeSessions: (count: number) =>
         `${count} active ${count === 1 ? "session" : "sessions"}`,
+      // Run 1 (tier-1 spec / A1): the rail header's All/Inbox toggle and the inbox's own
+      // copy + reason chips.
+      listModeLabel: "List all sessions, or only the ones waiting on you",
+      listModeAll: "All",
+      listModeInbox: "Inbox",
+      inboxEmpty: "Nothing is waiting on you.",
+      reasonWaiting: "Waiting",
+      reasonIdle: "Idle",
+      reasonPermission: (tool: string) => `Permission: ${tool}`,
     },
     sessionRow: {
       openSession: (title: string) => `Open ${title}`,

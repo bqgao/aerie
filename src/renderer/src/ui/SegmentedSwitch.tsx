@@ -4,7 +4,9 @@ import { Icon, type IconName } from "./icons";
 export interface SegmentedSwitchOption<T extends string> {
   value: T;
   label: string;
-  icon: IconName;
+  /** Optional glyph (the middle header view switch and friends show one); omitted → label-only,
+   *  for narrow hosts like the sessions rail header where icon+label don't both fit. */
+  icon?: IconName;
 }
 
 /**
@@ -47,7 +49,7 @@ export function SegmentedSwitch<T extends string>({
                 : "text-(--ui-text-tertiary) hover:text-fg",
             )}
           >
-            <Icon name={opt.icon} size={13} />
+            {opt.icon && <Icon name={opt.icon} size={13} />}
             {opt.label}
           </button>
         );

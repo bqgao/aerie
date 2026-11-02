@@ -45,6 +45,14 @@ import { ProjectGroupRow } from "./ProjectGroupRow";
 import { placeAnchoredMenu } from "./anchored-menu-position";
 import { defaultSpawnAgent, saveLastAgent } from "./agent-preference";
 import { ServerRailSection } from "./ServerRailSection";
+import {
+  $railListMode,
+  isInboxSession,
+  setRailListMode,
+  type RailListMode,
+} from "./inbox-model";
+import { SegmentedSwitch } from "../ui/SegmentedSwitch";
+import { useStore } from "@nanostores/react";
 
 /** How many hidden entries one "Older (N)" expansion (or one "Show more") reveals. */
 const OLDER_PAGE_SIZE = 10;
@@ -104,6 +112,10 @@ export function LeftSidebar({
   onRoute: (id: string) => void;
 }) {
   const { t } = useI18n();
+  // Run 1 (tier-1 spec / A1): the rail's All/Inbox modes — a renderer-lifetime atom, defaulting
+  // to All, that narrows every session section below the toggle.
+  const railMode = useStore($railListMode);
+  const inbox = railMode === "inbox";
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   // Explicit per-parent overrides only. Families default collapsed and expand only from their
@@ -128,13 +140,16 @@ export function LeftSidebar({
   // The dropdown's highlight reflects the only filter left in it.
   const agentFilterActive = preferences.agent !== "all";
   const searched = filterSessions(sessions, query);
-  const pinned = pinnedSessions(searched);
+  const pinned = pinnedSessions(searched).filter(
+    (s) => !inbox || isInboxSession(s),
+  );
   // Build families before project grouping so a child follows its root even if its own rollout cwd
   // differs. filterGroups applies search + preferences together and retains ancestor context.
   const groups = filterGroups(
     groupSessionsByProject(sessions, homeDir),
     preferences,
     query,
+    inbox ? isInboxSession : undefined,
   );
   // Per-folder "Older (N)" disclosure (issue #431): key → how many hidden entries to reveal.
   // Ephemeral by design — revealing history is an errand, not a mode.
@@ -622,6 +637,18 @@ export function LeftSidebar({
               <SidebarPanelLabel className="pl-2">
                 {t.shell.sidebar.sessionsLabel}
               </SidebarPanelLabel>
+              {/* Run 1 (tier-1 spec / A1): the rail's All/Inbox modes. Composes with the pinned/hidden/
+                  project-group machinery — in Inbox every section below shows only waiting-on-user
+                  sessions — so the toggle lives on the header both sections sit under. */}
+              <SegmentedSwitch<RailListMode>
+                value={railMode}
+                onChange={setRailListMode}
+                ariaLabel={t.shell.sidebar.listModeLabel}
+                options={[
+                  { value: "all", label: t.shell.sidebar.listModeAll },
+                  { value: "inbox", label: t.shell.sidebar.listModeInbox },
+                ]}
+              />
               <div className="flex items-center gap-0.5">
                 <button
                   type="button"
@@ -690,9 +717,13 @@ export function LeftSidebar({
                 <div className="mx-2 my-1 border-t border-sidebar-border" />
                 {groups.length === 0 ? (
                   <p className="px-2 py-2 text-xs text-(--ui-text-quaternary)">
-                    {agentFilterActive && sessions.length > 0
-                      ? t.shell.sidebar.noMatchingSessions
-                      : t.shell.sidebar.noSessionsYet}
+                    {inbox
+                      ? // Inbox's own empty state: waiting-on-user sessions only — the line explains
+                        // the mode instead of claiming the list is empty (tier-1 spec Run 1 / A1).
+                        t.shell.sidebar.inboxEmpty
+                      : agentFilterActive && sessions.length > 0
+                        ? t.shell.sidebar.noMatchingSessions
+                        : t.shell.sidebar.noSessionsYet}
                   </p>
                 ) : (
                   otherProjects.map((g) => renderProjectGroup(g, "ordinary"))
