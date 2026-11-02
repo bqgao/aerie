@@ -984,6 +984,20 @@ export const en = {
     unavailable: "unavailable",
     hits: (n: number) => `${n} hit${n === 1 ? "" : "s"}`,
   },
+  // B2 quick palette (⌘⇧O). Ranked-kind headers reuse the rail's section-title voice;
+  // the search-transcripts row rides B1's Search pane.
+  palette: {
+    title: "Quick palette",
+    placeholder: "Jump to…",
+    noMatches: "No matches.",
+    searchTranscripts: "Search transcripts…",
+    kinds: {
+      sessions: "Sessions",
+      projects: "Projects",
+      servers: "Servers",
+      tabs: "Editor tabs",
+    },
+  },
   // Large-number abbreviation. English groups by powers of 10^3 (k/M) via the shared
   // formatTokensShort/formatTokensAxis helpers; zh groups by powers of 10^4 (万/亿) with
   // its own thresholds — a genuinely different scheme, not just a different unit string.

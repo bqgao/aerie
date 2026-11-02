@@ -901,6 +901,19 @@ export const zh: Translations = {
     unavailable: "不可用",
     hits: (n: number) => `${n} 条命中`,
   },
+  // B2 快速面板（⌘⇧O）。分组的标题复用侧栏小节的语气；"检索会话记录"行直达 B1 的 Search 面板。
+  palette: {
+    title: "快速面板",
+    placeholder: "跳转到…",
+    noMatches: "无匹配项。",
+    searchTranscripts: "检索会话记录…",
+    kinds: {
+      sessions: "会话",
+      projects: "项目",
+      servers: "服务器",
+      tabs: "编辑器标签页",
+    },
+  },
   numbers: {
     // Chinese groups large numbers by powers of 10^4 (万 = 10,000, 亿 = 100,000,000),
     // not 10^3 like en's k/M — mirrors formatTokensShort/formatTokensAxis's own
