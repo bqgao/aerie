@@ -128,7 +128,7 @@ export function stepPreview(
           // Same row: during grace, back to visible immediately (it was never hidden, so no
           // re-delay); while visible, reposition only if geometry changed.
           if (state.phase === "grace") return visible(state, event.anchor);
-          return sameGeometry(state.anchor!, event.anchor)
+          return sameGeometry(state.anchor, event.anchor)
             ? state
             : visible(state, event.anchor);
         }
