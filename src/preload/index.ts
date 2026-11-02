@@ -12,6 +12,7 @@ import {
 } from "@shared/transcript";
 import { TERMINAL } from "@shared/terminal";
 import { SHELL_TERMINAL } from "@shared/shell-terminal";
+import { SSH_TERMINAL } from "@shared/ssh-terminal";
 
 const api: AppApi = {
   overview: () => ipcRenderer.invoke(IPC.overview),
@@ -184,6 +185,34 @@ const api: AppApi = {
         cb(id, code);
       ipcRenderer.on(SHELL_TERMINAL.exit, handler);
       return () => ipcRenderer.removeListener(SHELL_TERMINAL.exit, handler);
+    },
+  },
+  terminalSsh: {
+    spawn: (req) => ipcRenderer.invoke(SSH_TERMINAL.spawn, req),
+    write: (id, data) => ipcRenderer.send(SSH_TERMINAL.write, id, data),
+    resize: (id, cols, rows) =>
+      ipcRenderer.send(SSH_TERMINAL.resize, id, cols, rows),
+    ack: (id, charCount) => ipcRenderer.send(SSH_TERMINAL.ack, id, charCount),
+    close: (id) => ipcRenderer.send(SSH_TERMINAL.close, id),
+    onData: (cb) => {
+      const handler = (
+        _e: IpcRendererEvent,
+        id: string,
+        data: string,
+        offset: number,
+      ) => cb(id, data, offset);
+      ipcRenderer.on(SSH_TERMINAL.data, handler);
+      return () => ipcRenderer.removeListener(SSH_TERMINAL.data, handler);
+    },
+    onExit: (cb) => {
+      const handler = (
+        _e: IpcRendererEvent,
+        id: string,
+        code: number,
+        reason: import("@shared/ssh-terminal").SshTerminalExitReason,
+      ) => cb(id, code, reason);
+      ipcRenderer.on(SSH_TERMINAL.exit, handler);
+      return () => ipcRenderer.removeListener(SSH_TERMINAL.exit, handler);
     },
   },
   getPathForFile: (file) => webUtils.getPathForFile(file as File),

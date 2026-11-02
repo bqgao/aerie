@@ -18,6 +18,7 @@ import type {
 } from "./transcript";
 import type { TerminalApi } from "./terminal";
 import type { ShellTerminalApi } from "./shell-terminal";
+import type { SshTerminalApi } from "./ssh-terminal";
 import type { MetricsRead } from "./metrics";
 import type { ModelDefaults } from "./models";
 import type { StatsSnapshot, StatsRange, ScanProgress } from "./stats";
@@ -397,6 +398,9 @@ export type AppApi = IpcApi & {
   /** The footer shell-terminal surface (a plain interactive shell per tab) — separate manager and
    *  channels from the Managed `terminal` surface above. */
   shellTerminal: ShellTerminalApi;
+  /** The SSH-terminal surface (S2): a remote shell channel per tab, riding ONE pooled ssh2 client
+   *  per saved server resolved main-side — the renderer never sees credentials or a client. */
+  terminalSsh: SshTerminalApi;
   /** Electron webUtils.getPathForFile: the absolute filesystem path of a DOM File dragged from the
    *  OS, for dropping paths into the terminal. Typed loosely (`object`) so this shared type stays
    *  DOM-lib-free under tsconfig.node.json; renderer call sites pass a real File. */

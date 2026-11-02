@@ -33,6 +33,42 @@ export interface SshClientRpc {
     dstPort: number,
     cb: (err: Error | undefined, stream: Duplex | null) => void,
   ): void;
+  /** S2: open an interactive shell window on the live client — the renderer-side SSH terminal rides
+   *  the SAME pooled client the tunnel and execs do. Optional at the seam so a pool-level fake that
+   *  never opens channels stays valid (the real factory always provides it); callers guard for its
+   *  absence and fail the open in-band. */
+  shell?(
+    window: SshShellWindow | undefined,
+    cb: (err: Error | undefined, stream: SshShellStream | null) => void,
+  ): void;
+}
+
+/** The shell-window request the ssh terminal sends (narrowed from ssh2's PseudoTerminalOptions):
+ *  a TERM declaration plus the first grid. The remote pty sizes in cells; there are no pixel dims. */
+export interface SshShellWindow {
+  term?: string;
+  cols?: number;
+  rows?: number;
+}
+
+/** The live ssh2 shell channel, narrowed to exactly the members the ssh terminal store drives.
+ *  ssh2's real Channel satisfies this structurally (declared in ssh2-types.d.ts's ShellStream).
+ *  Resize rides ssh2's argument order (rows, cols, height, width) with pixel dims at 0. */
+export interface SshShellStream {
+  write(data: string | Buffer | Uint8Array): void;
+  setWindow(rows: number, cols: number, height: number, width: number): void;
+  /** Read-side flow control: the terminal credit manager pauses the remote stream locally. */
+  pause(): void;
+  resume(): void;
+  /** Half-close (EOF). */
+  end(): void;
+  /** Force the channel closed (a user teardown of one terminal tab; the pooled client stays). */
+  close(): void;
+  on(event: "data", cb: (chunk: Buffer | string) => void): void;
+  /** The remote shell exiting (user typed `exit`); always precedes a `close` for that path, which
+   *  is how a shell exit is told apart from a hard drop (which skips `exit` entirely). */
+  on(event: "exit", cb: () => void): void;
+  on(event: "close", cb: (err?: Error) => void): void;
 }
 
 /** The dial-time config, narrowed to the exact fields this pool sets (ssh2's ConnectConfig is

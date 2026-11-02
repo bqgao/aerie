@@ -47,6 +47,8 @@ import { createRemoteClaudeReads } from "./parse-worker/remote";
 import { registerTerminalIpc } from "./terminal/ipc";
 import type { ResumeTarget } from "./terminal/resume-gate";
 import { registerShellTerminalIpc } from "./terminal/shell-ipc";
+import { registerSshTerminalIpc } from "./terminal/ssh-ipc";
+import type { ConnectionManager } from "./servers/connection-manager";
 import {
   buildShellEnv,
   isExecutableFile,
@@ -107,6 +109,13 @@ function createWindow(
   remoteSpawn?: (
     serverId: string,
   ) => Promise<{ url: string; env: Record<string, string> } | null>,
+  /** S2: the pooled SSH connection (app-level) for the terminal rail's ssh tabs. Absent (harnesses)
+   *  → no ssh terminal IPC registers and the section's Open Terminal dials refuse in-band. */
+  connectionManager?: ConnectionManager,
+  /** S2: a holder that calls the pool's onDown into the ssh terminal manager — assigned when the
+   *  ssh terminal IPC registers below. Declared before the pool (which needs it for onDown), so
+   *  drops recorded before the first window opens are absorbed by this no-op. */
+  sshTerminalDown?: { noteDown: (serverId: string) => void },
 ): void {
   // The renderer header is a fixed HEADER_HEIGHT_PX tall and doubles as the title bar. On macOS we hide
   // the native title bar but KEEP the traffic lights (titleBarStyle 'hidden', never frame:false — the
@@ -180,6 +189,17 @@ function createWindow(
   // The footer shell terminal: a second manager on its own channels. No registry, no resume/fork —
   // plain interactive shells that die with the window.
   registerShellTerminalIpc({ window: win, env: shellEnv });
+
+  // The terminal rail's ssh tabs: a THIRD manager on `shellterm:ssh:*` channels, riding the pooled
+  // SSH connection. Its noteDown wires into the pool's onDown (composed at the manager creation —
+  // through the holder passed in), so a live drop ends every riding terminal "dropped".
+  if (connectionManager && sshTerminalDown) {
+    const { noteDown } = registerSshTerminalIpc({
+      window: win,
+      connectionManager,
+    });
+    sshTerminalDown.noteDown = noteDown;
+  }
 
   win.on("closed", () => registerRename(() => {}));
 
@@ -291,10 +311,18 @@ app
       // Pass R: every connection loss tears the profile's tunnel down with it (the loopback
       // listener is inside the SSH leg; nothing survives the pool here). The transport is
       // referenced one line down — the closure runs lazily on each drop, never at construction.
-      onDown: (id) => remoteTransport.teardown(id),
+      onDown: (id) => {
+        remoteTransport.teardown(id);
+        sshTerminalDown.noteDown(id);
+      },
     });
     // The Pass R remote transport: tunnels + serve health over the S1 pool, passing the serve
     // password straight from the credential store (never through a log or status line).
+    // S2: connection drops ALSO end every ssh terminal riding that server ("dropped") — the
+    // terminal holder is filled when the window's ssh terminal IPC registers (below openWindow).
+    const sshTerminalDown: { noteDown: (serverId: string) => void } = {
+      noteDown: () => {}, // absorbed here until a window registers its ssh terminals
+    };
     const remoteTransport = createRemoteTransport({
       manager: connectionManager,
       profileOf: (id) => serverProfiles.list().find((p) => p.id === id),
@@ -328,6 +356,8 @@ app
         shellTermEnv,
         appSettings.read().appTheme ?? "dark",
         resolveRemoteSpawn,
+        connectionManager,
+        sshTerminalDown,
       );
     openWindow();
     app.on("activate", () => {

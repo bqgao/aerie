@@ -6,7 +6,11 @@
  * fields the pool's narrowed SshConnectConfig deliberately does not model.
  */
 import { Client } from "ssh2";
-import type { SshClientFactory, SshClientRpc } from "./connection-manager";
+import type {
+  SshClientFactory,
+  SshClientRpc,
+  SshShellStream,
+} from "./connection-manager";
 
 /** The default factory: ssh2.Client over the exact members the pool uses. Returns immediately;
  *  events arrive after connect().
@@ -59,6 +63,14 @@ export function createSshClientFactory(): SshClientFactory {
         client.forwardOut(srcHost, srcPort, dstHost, dstPort, (err, stream) =>
           cb(err, stream ?? null),
         ),
+      // S2, the terminal leg: an interactive shell window on the same client. The channel handed
+      // to the callback IS the narrowed SshShellStream structurally (both are this module's declared
+      // ssh2 ShellStream surface), but the two declarations are separate types — one cast records
+      // that identity instead of spreading the narrowed shape out as `any`.
+      shell: (window, cb) =>
+        client.shell(window, (err, stream) => {
+          cb(err, err || !stream ? null : (stream as SshShellStream));
+        }),
     };
     return rpc;
   };
