@@ -52,7 +52,32 @@ describe("store", () => {
     expect(
       (db.prepare("PRAGMA user_version").get() as { user_version: number })
         .user_version,
-    ).toBe(15);
+    ).toBe(17);
+  });
+
+  it("round-trips the waiting reason and fork provenance (tier-1 Run 2 / A5+A3)", () => {
+    const db = openTestDb();
+    migrate(db);
+    upsertSessions(db, [
+      snap({
+        id: "a5",
+        waitingReason: "Permission: Bash",
+        forkSourceId: "ses_parent",
+      }),
+      snap({ id: "plain" }),
+    ]);
+    expect(getPersisted(db).find((s) => s.id === "a5")).toMatchObject({
+      waitingReason: "Permission: Bash",
+      forkSourceId: "ses_parent",
+    });
+    expect(getPersisted(db).find((s) => s.id === "plain")).toMatchObject({
+      waitingReason: undefined,
+      forkSourceId: undefined,
+    });
+    expect(hydrate(getPersisted(db)[1])).toMatchObject({
+      waitingReason: undefined,
+      forkSourceId: undefined,
+    });
   });
 
   it("round-trips a snapshot, coercing missing branch and the awaitingUser flag", () => {

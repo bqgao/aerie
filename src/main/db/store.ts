@@ -17,7 +17,7 @@ import { transaction, type SqliteDb } from "./driver";
  *  correcting injected AGENTS.md text that older title derivation mistook for a user prompt — v14
  *  persists Codex parent/subagent thread relationships for sidebar nesting — v15 adds origin_cwd,
  *  the frozen start directory the sidebar's stable repo root resolves from. */
-const SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = 17;
 
 function userVersion(db: SqliteDb): number {
   return (db.prepare("PRAGMA user_version").get() as { user_version: number })
@@ -51,6 +51,7 @@ export function migrate(db: SqliteDb): void {
         created_ms INTEGER NOT NULL DEFAULT 0,
         awaiting_user INTEGER NOT NULL DEFAULT 0,
         waiting_reason TEXT,
+        fork_source_id TEXT,
         transcript_mtime_ms INTEGER NOT NULL DEFAULT 0,
         input_tokens INTEGER NOT NULL DEFAULT 0,
         output_tokens INTEGER NOT NULL DEFAULT 0,
@@ -87,6 +88,7 @@ interface Row {
   created_ms: number;
   awaiting_user: number;
   waiting_reason: string | null;
+  fork_source_id: string | null;
   transcript_mtime_ms: number;
   input_tokens: number;
   output_tokens: number;
@@ -146,6 +148,7 @@ function rowToPersisted(r: Row): PersistedSession {
     createdMs: r.created_ms,
     awaitingUser: !!r.awaiting_user,
     waitingReason: r.waiting_reason ?? undefined,
+    forkSourceId: r.fork_source_id ?? undefined,
     transcriptMtimeMs: r.transcript_mtime_ms,
     usage: {
       inputTokens: r.input_tokens,
@@ -218,6 +221,7 @@ export function hydrate(p: PersistedSession): Session {
     lastActivityMs: p.lastActivityMs,
     createdMs: p.createdMs,
     waitingReason: p.waitingReason,
+    forkSourceId: p.forkSourceId,
     sessionClockMs,
     effortLevel: p.effortLevel,
     compactionCount: p.compactionCount,
@@ -227,11 +231,11 @@ export function hydrate(p: PersistedSession): Session {
 
 const UPSERT = `
   INSERT INTO sessions
-    (id, title, project, cwd, origin_cwd, branch, state, management, agent, thread_kind, parent_session_id, model, model_raw, last_activity_ms, created_ms, awaiting_user, waiting_reason, transcript_mtime_ms,
+    (id, title, project, cwd, origin_cwd, branch, state, management, agent, thread_kind, parent_session_id, model, model_raw, last_activity_ms, created_ms, awaiting_user, waiting_reason, fork_source_id, transcript_mtime_ms,
      input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, usage_by_model, context_tokens, effort_level,
      compaction_count, compaction_reclaimed_tokens)
   VALUES
-    (@id, @title, @project, @cwd, @origin_cwd, @branch, @state, @management, @agent, @thread_kind, @parent_session_id, @model, @model_raw, @last_activity_ms, @created_ms, @awaiting_user, @waiting_reason, @transcript_mtime_ms,
+    (@id, @title, @project, @cwd, @origin_cwd, @branch, @state, @management, @agent, @thread_kind, @parent_session_id, @model, @model_raw, @last_activity_ms, @created_ms, @awaiting_user, @waiting_reason, @fork_source_id, @transcript_mtime_ms,
      @input_tokens, @output_tokens, @cache_read_tokens, @cache_creation_tokens, @cache_creation_5m_tokens, @cache_creation_1h_tokens, @usage_by_model, @context_tokens, @effort_level,
      @compaction_count, @compaction_reclaimed_tokens)
   ON CONFLICT(id) DO UPDATE SET
@@ -263,6 +267,7 @@ const UPSERT = `
     END,
     awaiting_user = excluded.awaiting_user,
     waiting_reason = excluded.waiting_reason,
+    fork_source_id = excluded.fork_source_id,
     transcript_mtime_ms = excluded.transcript_mtime_ms,
     input_tokens = excluded.input_tokens,
     output_tokens = excluded.output_tokens,
@@ -307,6 +312,7 @@ export function upsertSessions(
         created_ms: s.createdMs,
         awaiting_user: s.awaitingUser ? 1 : 0,
         waiting_reason: s.waitingReason ?? null,
+        fork_source_id: s.forkSourceId ?? null,
         transcript_mtime_ms: s.transcriptMtimeMs,
         input_tokens: s.usage.inputTokens,
         output_tokens: s.usage.outputTokens,

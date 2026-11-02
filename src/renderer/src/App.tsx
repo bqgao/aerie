@@ -390,13 +390,25 @@ export function App() {
     }
   }
 
-  // Fork a session: resume its conversation into a fresh id under `--fork-session`. Unlike Resume (which
-  // resumes the SAME id, so its row already exists in the list), a fork's id is brand new, so it follows
-  // the spawn path: stand the terminal up first, then show the optimistic Managed draft main echoes back.
-  // That draft is hydrated from zero usage with fresh timestamps (the same builder spawn uses), so the
-  // fork never wears the source's accumulated cost/context/age; discovery then supersedes it with the
-  // fork's own Transcript. The source's model rides in so the draft labels the right model up front.
+  // Fork a session. Claude/codex go through the terminal path (resume into a fresh id under the
+  // CLI); opencode forks through its service API (tier-1 Run 2 / A3): no terminal on fork v1 —
+  // the forked session exists server-side already, so the optimistic draft lands, the rail
+  // focuses it, and discovery supersedes the draft with the real row on the next sweep.
   async function forkSession(source: Session): Promise<void> {
+    if (source.agent === "opencode") {
+      if (forkingRef.current.has(source.id)) return;
+      forkingRef.current.add(source.id);
+      try {
+        const result = await window.api.opencodeFork(source.id);
+        if (!result.ok || !result.session)
+          throw new Error(result.error ?? t.workspace.resume.couldNotFork);
+        setDrafts((ds) => [result.session!, ...ds]);
+        setSelectedId(result.session!.id);
+      } finally {
+        forkingRef.current.delete(source.id);
+      }
+      return;
+    }
     const gate = spawnGateFor(cliStatus, "claude");
     if (!gate.canSpawn)
       throw new Error(gate.reason ?? t.settings.cli.unavailableReason);

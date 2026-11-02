@@ -99,8 +99,10 @@ export const AGENTS: Record<AgentId, AgentDescriptor> = {
   },
   // opencode: transcript + telemetry (the v2 service API carves usage per session row) + Resume
   // (`opencode --session <id>` — the CLI pins/continues, so managed spawns mint-and-pin, claude-style).
-  // Activity/subagents/fork/model-picker still gated off; Pass 2 flips more flags as provider readers
-  // land — the surfaces need no edits. hasStatsBreakdowns stays false: no per-model attribution yet.
+  // Fork joins in Pass 2 (tier-1 spec Run 2 / A3): the v2 `POST /session/:id/fork` arm — a service
+  // op, no pty spawned (the forked session exists server-side; the user opens it like any row).
+  // Activity/subagents/model-picker still gated off; later passes flip more flags as provider
+  // readers land — the surfaces need no edits. hasStatsBreakdowns stays false: no per-model attribution yet.
   opencode: {
     id: "opencode",
     label: "OpenCode",
@@ -110,6 +112,7 @@ export const AGENTS: Record<AgentId, AgentDescriptor> = {
       hasTranscript: true,
       hasTelemetry: true,
       canResume: true,
+      canFork: true,
       hasStats: true,
     },
   },

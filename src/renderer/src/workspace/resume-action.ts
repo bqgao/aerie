@@ -41,9 +41,19 @@ export function resumeActionDisabled(opts: {
   /** The agent's capability flag (canResume/canFork). Defaults true so claude-only surfaces
    *  don't have to pass it; the menu passes AGENTS[agent].capabilities.* */
   capable?: boolean;
+  /** Whether the op runs through the terminal's CLI spawn gate at all. False for service-side
+   *  ops (tier-1 Run 2 / A3: the opencode fork rides the v2 API — no pty, so a missing CLI must
+   *  not disable it; its own availability degrades in band). Defaults true. */
+  spawnGate?: boolean;
 }): boolean {
-  const { canSpawn, resumable, available = true, capable = true } = opts;
-  return !capable || !canSpawn || !resumable || !available;
+  const {
+    canSpawn,
+    resumable,
+    available = true,
+    capable = true,
+    spawnGate = true,
+  } = opts;
+  return !capable || !resumable || !available || (spawnGate && !canSpawn);
 }
 
 export interface ResumeAction {

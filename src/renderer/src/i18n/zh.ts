@@ -297,6 +297,7 @@ export const zh: Translations = {
         compact: "压缩",
       },
       branchTooltip: (branch) => `分支：${branch}`,
+      forkedFrom: (sourceId) => `自 ${sourceId} 分叉`,
       state: {
         working: "进行中",
         waiting: "等待中",

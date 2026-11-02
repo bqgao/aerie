@@ -1,4 +1,8 @@
-import type { PersistedSession, SessionCandidate } from "@shared/types";
+import type {
+  PersistedSession,
+  Session,
+  SessionCandidate,
+} from "@shared/types";
 import type { TranscriptReadWire, ToolResultDetail } from "@shared/transcript";
 import type {
   TaskRead,
@@ -8,6 +12,15 @@ import type {
   MonitorOutputRead,
 } from "@shared/ipc";
 import type { MetricsRead } from "@shared/metrics";
+
+/**
+ * The fail-in-band result shape for the provider service-op arms (fork, prompt): handlers never
+ * reject, so the renderer renders `error` instead of catching a throw. `session` rides the
+ * optimistic draft for ops that mint a new session (fork).
+ */
+export type ProviderOpResult =
+  | { ok: true; session?: Session }
+  | { ok: false; error: string };
 
 /**
  * Every enumeration and read here is async because the claude provider ships the fs work to the
@@ -98,6 +111,10 @@ export interface Provider {
   resolveResumeTarget(
     id: string,
   ): { alive: boolean; cwd: string; rolloutPath?: string } | null;
+  /** Tier-1 Run 2 / A3: the fork arm for agents whose service API can fork a session in place
+   *  (opencode — the op is an API call, no pty). Optional: a provider without it answers the
+   *  composite's dispatch with the in-band "unsupported" result, never a rejection. */
+  forkSession?(id: string): Promise<ProviderOpResult>;
   /** Resolve just a session's working directory, for actions that only need the folder (Open in).
    *  Cheaper than resolveResumeTarget: no liveness probe, and a targeted transcript lookup rather than a
    *  full index. Null when no cwd resolves. */

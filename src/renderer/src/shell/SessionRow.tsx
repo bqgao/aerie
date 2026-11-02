@@ -220,6 +220,19 @@ export function SessionRow({
             {descendantCount}
           </span>
         )}
+        {!hasChildren && session.forkSourceId && (
+          // Tier-1 Run 2 / A3: the fork badge — present whenever the row carries fork provenance.
+          <span
+            className="group-hover:hidden group-has-[:focus-visible]:hidden shrink-0"
+            title={t.shell.sessionRow.forkedFrom(session.forkSourceId)}
+          >
+            <Icon
+              name="git-branch"
+              size={11}
+              className="text-(--ui-text-quaternary)"
+            />
+          </span>
+        )}
         {!hasChildren && session.worktree && (
           <span
             className={cx(

@@ -81,6 +81,8 @@ export const IPC = {
   clipboardReadText: "clipboard:readText",
   renameSession: "session:rename",
   setSessionPinned: "session:setPinned",
+  /** Tier-1 Run 2 / A3: fork an opencode session through its service API. */
+  opencodeFork: "opencode:fork",
   setProjectPlacement: "project:setPlacement",
   getToolResult: "toolResult:get",
   updateGetState: "update:getState",
@@ -114,6 +116,15 @@ export const IPC = {
   /** PUSH: main -> renderer on every update-state transition. */
   updateState: "update:state",
 } as const;
+
+/** The renderer-facing result of one opencode service-op (tier-1 Run 2 / A3 + A4). Handlers never
+ *  reject — the failure reason rides `error` verbatim (already display-grade, built main-side
+ *  from the typed API error). `session` carries the optimistic draft for minting ops (fork). */
+export interface OpencodeOpResult {
+  ok: boolean;
+  session?: Session;
+  error?: string;
+}
 
 /** The index-only slice: the indexed session list from one SQLite read. The SQLite index holds no
  *  live statusLine data, so the account is added later — this is what the store returns,
@@ -312,6 +323,10 @@ export interface IpcApi {
   /** Persist (or clear) the durable pin mark for a session id, then return the fresh overview with
    *  pinnedAtMs stamped. Applied in overviewNow(), so overview() and refresh() carry it too. */
   setSessionPinned(id: string, pinned: boolean): Promise<OverviewData>;
+  /** Tier-1 Run 2 / A3: fork one opencode session through its service API (local or remote —
+   *  main resolves every URL/credential). Fails in band: `error` carries the display-grade
+   *  reason; `session` carries the optimistic draft of the NEW session on success. */
+  opencodeFork(sourceId: string): Promise<OpencodeOpResult>;
   /** Every saved launch-args preset, keyed by agent (the New-session preset picker). */
   getLaunchPresets(): Promise<LaunchPresets>;
   /** Replace the whole presets object — the renderer owns list edits and ships the result back. */

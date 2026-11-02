@@ -39,6 +39,17 @@ export function createCompositeProvider(
     readMonitorOutput: (id, monitorId, since) =>
       by(id).readMonitorOutput(id, monitorId, since),
     readMetrics: (id, since) => by(id).readMetrics(id, since),
+    // Tier-1 Run 2 / A3/A4: the service-op arms dispatch by the session's agent, exactly like
+    // every per-candidate arm. A provider without the arm answers in band — never a rejection.
+    forkSession: (id) => {
+      const p = by(id);
+      return p.forkSession
+        ? p.forkSession(id)
+        : Promise.resolve({
+            ok: false as const,
+            error: `${p.id} does not support forking sessions.`,
+          });
+    },
     resolveResumeTarget: (id) => by(id).resolveResumeTarget(id),
     resolveSessionCwd: (id) => by(id).resolveSessionCwd(id),
     resolveTranscriptPath: (id) => by(id).resolveTranscriptPath(id),

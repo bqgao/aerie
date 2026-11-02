@@ -11,6 +11,7 @@ import { metricsToken } from "../metrics-token";
 import { SPEED_WINDOW_MS } from "../claude/transcript-speed";
 import { deriveSessionState } from "../claude/state";
 import { projectFromCwd } from "../../project-name";
+import { hydrate } from "../../db/store";
 import { readGit } from "../../git/read-git";
 import { readPr } from "../../git/read-pr";
 import { MAX_SESSION_TITLE_LEN } from "@shared/title-override";
@@ -57,6 +58,62 @@ const MESSAGE_LIST_LIMIT = 100;
  *  generic reason at row level; the transcript read's verbatim reason (if any) rides the doc. */
 export const OPENCODE_WAITING_REASON = "Turn complete";
 
+/** In-band reason for the fork op when nothing answered it (no service, unreachable source,
+ *  or a non-2xx). Renderer renders it verbatim — handlers never reject (tier-1 cross-cutting). */
+export const OPENCODE_FORK_UNAVAILABLE =
+  "The OpenCode service did not complete the fork.";
+
+/**
+ * The optimistic Managed-style draft the fork ipc returns the renderer, built exactly like the
+ * spawn/resume drafts (zero-context formatting through hydrate) — but from the fork response ROW
+ * so the id, title, tokens, and `fork` provenance are the service's own values (tier-1 Run 2 /
+ * A3). A draft carves no cost/context/age from the source. Management stays "observed": no pty
+ * was spawned (fork v1 never opens a terminal), so the row reads as every other observed row.
+ */
+export function opencodeForkDraft(row: OpencodeSessionRow): Session {
+  const cwd = row.location?.directory ?? "";
+  const project = projectFromCwd(cwd);
+  return hydrate({
+    id: row.id,
+    agent: "opencode",
+    title: rowTitleFor(row, project),
+    project,
+    cwd,
+    originCwd: cwd,
+    branch: undefined,
+    state: "idle",
+    management: "observed",
+    model: normalizeModelId(rowModelRaw(row)),
+    modelRaw: rowModelRaw(row),
+    forkSourceId: row.fork?.sessionID,
+    lastActivityMs: row.time?.updated ?? Date.now(),
+    createdMs: row.time?.created ?? Date.now(),
+    awaitingUser: false,
+    transcriptMtimeMs: row.time?.updated ?? 0,
+    usage: row.tokens ? usageFromRow(row.tokens) : ZERO_USAGE,
+    usageByModel: [],
+    contextTokens: 0,
+  });
+}
+
+/** Standalone title resolution the draft builder shares with the provider's sweep closures —
+ *  the native title, trimmed and capped; the supplied fallback otherwise. */
+export function rowTitleFor(row: OpencodeSessionRow, fallback: string): string {
+  const native = row.title?.trim();
+  return native ? native.slice(0, MAX_SESSION_TITLE_LEN) : fallback;
+}
+
+/** `provider/model` is the honest compound retained id (e.g. "nanhu/GLM-5.3"); the family
+ *  overlay normalizes it (no opencode model matches an alias — deliberate). Undefined when the
+ *  row's model ref carries no id. */
+export function rowModelRaw(
+  row: OpencodeSessionRow | null,
+): string | undefined {
+  const model = row?.model;
+  if (!model?.id) return undefined;
+  return `${model.providerID ?? ""}/${model.id}`;
+}
+
 /** One remote source for this pass: an ensured transport (baseUrl = the tunnel's loopback port
  *  or the profile's directUrl) plus the serve password for the Basic header. */
 export interface OpenCodeRemoteSources {
@@ -93,7 +150,25 @@ export interface OpenCodeProviderDeps {
  *  costUsd; the codex analog of the telemetry overlay — see provider/codex/index.ts). */
 export interface OpenCodeProvider extends Provider {
   overlaySessions(sessions: Session[]): Session[];
+  /** Tier-1 Run 2 / A3: the fork service-op (local + remote-namepaced sources). */
+  forkSession: OpenCodeForkSessionArm;
 }
+
+/** Tier-1 Run 2 / A3 + A4: the two service-op arms riding the same client — fail in band
+ *  (handlers never reject), so the renderer renders the reason it gets instead of a catch. */
+export type OpenCodeOpResult =
+  | {
+      ok: true;
+      /** The optimistic draft main built from the fork response row (A3 only). */
+      session?: Session;
+    }
+  | { ok: false; error: string };
+
+/** Tier-1 Run 2 / A3: opencode's fork arm. Sources: the roster the composite routes by id —
+ *  `id` may be a remote namespaced id, resolved per its own swept source. */
+export type OpenCodeForkSessionArm = (
+  sessionId: string,
+) => Promise<OpenCodeOpResult>;
 
 /** v2's message list serves newest-first, cursor pages walk back in time; a walk accumulates
  *  newest→oldest and the transcript wants oldest-first — the single sort below is the turn-around. */
@@ -429,13 +504,40 @@ export function createOpenCodeProvider(
     return native ? native.slice(0, MAX_SESSION_TITLE_LEN) : fallback;
   };
 
-  const modelRawFor = (row: OpencodeSessionRow | null): string | undefined => {
-    const model = row?.model;
-    if (!model?.id) return undefined;
-    // `provider/model` is the honest compound retained id (e.g. "nanhu/GLM-5.3"); the family
-    // overlay normalizes it (no opencode model matches an alias — deliberate).
-    return `${model.providerID ?? ""}/${model.id}`;
+  /** Tier-1 Run 2 / A3: fork through the service — local source or its own remote source (the
+   *  id's namespace picks). Returns the NEW raw session row; the draft session it turns into is
+   *  `opencodeForkDraft`. Null = the op is unavailable (no service/source, or the service said
+   *  no) — the ipc handler degrades that into an in-band error, never a rejection. */
+  const forkRowFor = async (id: string): Promise<OpencodeSessionRow | null> => {
+    const ns = parseNamespacedId(id);
+    if (ns) {
+      const source = remoteState.get(ns.serverId);
+      if (!source) return null; // source gone between sweeps — in-band failure, no throw
+      try {
+        const client = createOpenCodeClient({
+          baseUrl: source.baseUrl,
+          password: source.password,
+          fetchFn: deps.fetchFn,
+        });
+        return await client.forkSession(ns.raw);
+      } catch {
+        return null;
+      }
+    }
+    return await withClientRetry(true, (cl) => cl.forkSession(id));
   };
+
+  const forkSession: OpenCodeForkSessionArm = async (sessionId) => {
+    const row = await forkRowFor(sessionId);
+    if (!row)
+      return {
+        ok: false,
+        error: OPENCODE_FORK_UNAVAILABLE,
+      };
+    return { ok: true, session: opencodeForkDraft(row) };
+  };
+
+  const modelRawFor = rowModelRaw;
 
   const summarizeRow = async (
     candidate: SessionCandidate,
@@ -471,6 +573,9 @@ export function createOpenCodeProvider(
       lastActivityMs: updated || 0,
       createdMs: row?.time?.created ?? candidate.updatedAt ?? 0,
       awaitingUser: candidate.status === "waiting",
+      // Tier-1 Run 2 / A3: fork provenance rides the row (the fork field the service minted
+      // with), so the rail's fork badge survives draft supersede.
+      forkSourceId: row?.fork?.sessionID,
       transcriptMtimeMs: candidate.transcriptMtimeMs,
       usage: row?.tokens ? usageFromRow(row.tokens) : ZERO_USAGE,
       usageByModel: [], // per-model attribution needs the message's own modelID — Pass 2
@@ -661,5 +766,7 @@ export function createOpenCodeProvider(
           return s;
         return { ...s, costUsd: cost };
       }),
+    // Tier-1 Run 2 / A3: the fork service-op over the local service or its own remote source.
+    forkSession,
   };
 }

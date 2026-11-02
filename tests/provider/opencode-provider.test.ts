@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { createOpenCodeProvider } from "../../src/main/provider/opencode";
+import {
+  createOpenCodeProvider,
+  OPENCODE_FORK_UNAVAILABLE,
+} from "../../src/main/provider/opencode";
 import type { OpencodeSessionRow } from "../../src/main/provider/opencode/client";
 import { fromTranscriptWire } from "../../src/shared/transcript";
 import sessions from "../fixtures/opencode/sessions.json";
@@ -370,7 +373,10 @@ describe("opencode waiting signals (tier-1 Run 2 / A5)", () => {
   });
 
   it("a failed probe degrades to not-waiting and is retried on the next pass", async () => {
-    const { p, requests } = probeProvider(STALE_NOW, { failMessages: true });
+    const { p, requests } = probeProvider(STALE_NOW, {
+      last: [],
+      failMessages: true,
+    });
     const [c] = await p.listCandidates();
     expect(c.status).toBeUndefined();
     // Not cached: the next pass re-probes.
@@ -442,3 +448,139 @@ function messageRequests(requests: string[]): string[] {
     (url) => url.includes("/api/session/") && url.includes("/message"),
   );
 }
+
+describe("opencode fork op (tier-1 Run 2 / A3)", () => {
+  const FORK_ROW = {
+    id: "ses_newfork",
+    title: "Fork of checkout",
+    location: { directory: "/Users/bqgao/work" },
+    model: { id: "GLM-5.3", providerID: "nanhu" },
+    tokens: { input: 5, output: 6 },
+    time: { created: 1000, updated: 2000 },
+    fork: {
+      sessionID: "ses_source",
+      boundary: { type: "through", messageID: "msg_boundary" },
+    },
+  };
+
+  function forkProvider(opts: {
+    now?: () => number;
+    refuse?: boolean;
+    forkStatus?: number;
+    badBody?: boolean;
+  }) {
+    const service = fakeService(BASE);
+    fakeServiceCounter.resolves = 0;
+    const requests: string[] = [];
+    let method: string | undefined;
+    let body: string | undefined;
+    const fetchFn = (url: string, init?: RequestInit): Promise<Response> => {
+      requests.push(`${init?.method ?? "GET"} ${url}`);
+      if (init?.method === "POST") method = init.method;
+      if (typeof init?.body === "string") body = init.body;
+      if (opts.refuse) return Promise.reject(new Error("ECONNREFUSED"));
+      if (url.includes("/fork")) {
+        if (opts.forkStatus)
+          return Promise.resolve(
+            new Response("nope", { status: opts.forkStatus }),
+          );
+        if (opts.badBody)
+          return Promise.resolve(new Response("<html>", { status: 200 }));
+        return Promise.resolve(
+          new Response(JSON.stringify({ data: FORK_ROW }), { status: 200 }),
+        );
+      }
+      // Everything before the fork (the sweep/active/headers) doesn't matter to these tests.
+      return Promise.resolve(
+        new Response(JSON.stringify({ data: [ROOT], cursor: null }), {
+          status: 200,
+        }),
+      );
+    };
+    const p = createOpenCodeProvider({
+      service,
+      fetchFn,
+      now: opts.now ?? (() => (ROOT.time?.updated ?? 0) + 60_000),
+      managed: { has: () => true },
+    });
+    return { p, requests, method: () => method, body: () => body };
+  }
+
+  it("POSTs an empty body to /api/session/:id/fork and drafts from the response row", async () => {
+    const { p, requests, method, body } = forkProvider({});
+    const r = await p.forkSession(ROOT.id);
+    expect(r.ok).toBe(true);
+    if (!r.ok || !r.session) return; // narrowing
+    expect(method()).toBe("POST");
+    expect(body()).toBe("{}");
+    expect(requests.some((x) => x.endsWith(`/fork`))).toBe(true);
+    // The draft carries the service's own values, not the source session's.
+    expect(r.session).toMatchObject({
+      id: FORK_ROW.id,
+      title: "Fork of checkout",
+      agent: "opencode",
+      management: "observed",
+      state: "idle",
+      cwd: "/Users/bqgao/work",
+      forkSourceId: "ses_source",
+      modelRaw: "nanhu/GLM-5.3",
+    });
+  });
+
+  it("forks through the id's own remote source for namespaced ids", async () => {
+    const service = fakeService(BASE);
+    const remoteSources = [
+      { serverId: "srv-1", baseUrl: "http://127.0.0.1:45678", password: "p2" },
+    ];
+    const requests: string[] = [];
+    const fetchFn = (url: string): Promise<Response> => {
+      requests.push(url);
+      if (url.includes("/fork"))
+        return Promise.resolve(
+          new Response(JSON.stringify({ data: FORK_ROW }), { status: 200 }),
+        );
+      return Promise.resolve(
+        new Response(JSON.stringify({ data: [ROOT], cursor: null }), {
+          status: 200,
+        }),
+      );
+    };
+    const p = createOpenCodeProvider({
+      service,
+      fetchFn,
+      now: () => (ROOT.time?.updated ?? 0) + 60_000,
+      managed: { has: () => true },
+      remote: {
+        sources: () => Promise.resolve(remoteSources),
+        homeDir: "/home/remote",
+      },
+    });
+    await p.listCandidates(); // sweep fills remoteState with srv-1's source
+    const r = await p.forkSession(`srv-1:${ROOT.id}`);
+    expect(r.ok).toBe(true);
+    expect(
+      requests.some(
+        (u) => u.startsWith("http://127.0.0.1:45678") && u.endsWith("/fork"),
+      ),
+    ).toBe(true);
+  });
+
+  it("a refused fork degrades in band — ok:false with a display reason", async () => {
+    const { p } = forkProvider({ forkStatus: 500 });
+    const r = await p.forkSession(ROOT.id);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.length).toBeGreaterThan(0);
+  });
+
+  it("no service at all → the same in-band failure, never a throw", async () => {
+    const service = fakeService(null);
+    const p = createOpenCodeProvider({
+      service,
+      fetchFn: () => Promise.resolve(new Response("", { status: 200 })),
+      now: () => 0,
+    });
+    const r = await p.forkSession(ROOT.id);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe(OPENCODE_FORK_UNAVAILABLE);
+  });
+});

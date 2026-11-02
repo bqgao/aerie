@@ -281,14 +281,17 @@ export function useSessionMenu(
   // is available on ended/observed sessions there, so the menu must agree rather than additionally
   // gating on `ended`/`management === "observed"` (the 2026-07-17 fork-gate-parity fix; this shared
   // function is what makes the two surfaces structurally unable to drift like that again).
+  // Tier-1 Run 2 / A3: the opencode fork is a service API op — no pty, so it opts out of the CLI
+  // spawn gate and degrades in band instead.
   const forkDisabled = resumeActionDisabled({
     canSpawn,
     resumable: session.resumable,
     capable: caps.canFork,
+    spawnGate: session.agent !== "opencode",
   });
   const forkTitle = !caps.canFork
     ? t.shell.sessionMenu.comingSoonForAgent(AGENTS[session.agent].label)
-    : !canSpawn
+    : !canSpawn && session.agent !== "opencode"
       ? cliUnusableTitle(t, session.agent)
       : !session.resumable
         ? t.shell.sessionMenu.forkTitleNoConversation

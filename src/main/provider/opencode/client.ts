@@ -10,6 +10,11 @@ import { asRecord } from "../codex/rollout";
 /** Per-request bound. A local service answers in single-digit ms; 2s covers a cold warp-away. */
 export const OPENCODE_REQUEST_TIMEOUT_MS = 2_000;
 
+/** Command ops (fork/prompt) may outlast a read: a fork copies a session server-side. 10s —
+ *  bounded (a wedged service still fails the op, not the caller), but not pinned to the 2s read
+ *  bound a large history copy could blow through. */
+export const OPENCODE_COMMAND_TIMEOUT_MS = 10_000;
+
 export interface OpenCodeApiError extends Error {
   kind: "connect" | "status" | "response";
   status?: number;
@@ -48,6 +53,13 @@ export interface OpencodeSessionRow {
     viewed?: number;
   } | null;
   location?: { directory?: string } | null;
+  /** The fork provenance a row carries after `POST /session/:id/fork` (verified live contract):
+   *  `sessionID` is the SOURCE the new row was forked from; the boundary message is how the
+   *  parent's messages are inherited. List rows may omit the boundary detail. */
+  fork?: {
+    sessionID: string;
+    boundary?: { type: string; messageID: string };
+  } | null;
 }
 
 /** GET /api/session/active → a map keyed by session id (only running rows so far). */
@@ -88,6 +100,9 @@ export interface OpenCodeClient {
     limit: number,
     cursor?: string,
   ): Promise<Paged<OpencodeMessageRow>>;
+  /** `POST /api/session/{id}/fork` with an empty body (verified live contract) — returns the NEW
+   *  session row carrying its `fork` provenance. Tier-1 spec Run 2 / A3. */
+  forkSession(sessionId: string): Promise<OpencodeSessionRow>;
 }
 
 /** Typed error so call sites branch on failure KIND, not message text: `connect` (ECONNREFUSED /
@@ -170,6 +185,52 @@ export function createOpenCodeClient(deps: OpenCodeClientDeps): OpenCodeClient {
     return r;
   };
 
+  // The one POST wrapper behind the command ops (fork/prompt): JSON body, Basic auth, the longer
+  // command bound, and the same typed-error contract the GETs carry.
+  const jsonPost = async (
+    path: string,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> => {
+    let res: Response;
+    try {
+      res = await fetchFn(`${base}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...authHeader(password),
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(OPENCODE_COMMAND_TIMEOUT_MS),
+      });
+    } catch (err) {
+      throw opencodeError(
+        "connect",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+    if (!res.ok)
+      throw opencodeError(
+        "status",
+        `unexpected HTTP ${res.status}`,
+        res.status,
+      );
+    let parsed: unknown;
+    try {
+      parsed = await res.json();
+    } catch (err) {
+      throw opencodeError(
+        "response",
+        err instanceof Error ? err.message : String(err),
+        res.status,
+      );
+    }
+    const r = asRecord(parsed);
+    if (!r)
+      throw opencodeError("response", "body is not a JSON object", res.status);
+    return r;
+  };
+
   return {
     async listSessions(limit: number, cursor?: string) {
       const params = new URLSearchParams({
@@ -203,6 +264,17 @@ export function createOpenCodeClient(deps: OpenCodeClientDeps): OpenCodeClient {
         data: r.data as OpencodeMessageRow[],
         cursor: asCursor(r.cursor),
       };
+    },
+    async forkSession(sessionId: string) {
+      // Verified live: `{}` body → 200, `data` is the NEW session row (carrying its `fork`
+      // provenance). Anything else is the typed failure the provider degrades on.
+      const r = await jsonPost(
+        `/api/session/${encodeURIComponent(sessionId)}/fork`,
+        {},
+      );
+      const row = asRecord(r.data);
+      if (!row) throw opencodeError("response", "fork has no session row", 200);
+      return row as unknown as OpencodeSessionRow;
     },
   };
 }

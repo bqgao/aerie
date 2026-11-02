@@ -336,6 +336,8 @@ export const en = {
       // Pinned-row worktree hint: the real checked-out branch, shown only when it differs from
       // the worktree directory name (they're independent fields and can diverge).
       branchTooltip: (branch: string) => `Branch: ${branch}`,
+      // Tier-1 Run 2 / A3: the fork badge's tooltip — the id it was forked from.
+      forkedFrom: (sourceId: string) => `Forked from ${sourceId}`,
       // The Lamp glyph's hover-tooltip state word (session-glyph.ts's glyphTitle lowercases it).
       state: {
         working: "Working",

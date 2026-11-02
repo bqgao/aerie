@@ -228,6 +228,10 @@ export interface Session {
   pinnedAtMs?: number;
   currentTask?: string;
   waitingReason?: string;
+  /** Tier-1 spec Run 2 / A3: the session this row was forked from, set when its opencode row
+   *  carries the `fork` field (the forked session inherits the source's messages through the
+   *  boundary message). Absent ⇒ not a fork — the row badge keys on it. */
+  forkSourceId?: string;
 }
 
 /**
@@ -273,6 +277,9 @@ export interface PersistedSession {
   /** The tail's waiting reason — what the unanswered prompt/pending tool actually is (tier-1 spec
    *  Run 2 / A5). Absent when nothing is unanswered; rides awaiting_user's parse, never a separate one. */
   waitingReason?: string;
+  /** Tier-1 Run 2 / A3: the source id behind this row's opencode `fork` field, persisted so a
+   *  cache rebuild can't lose the badge. Absent ⇒ not a fork. */
+  forkSourceId?: string;
   /** mtime (ms) of the transcript when it was last parsed — the incremental high-water mark. A sync
    *  reparses only when the file's current mtime exceeds this. 0 means the session has no transcript. */
   transcriptMtimeMs: number;

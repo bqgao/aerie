@@ -99,4 +99,29 @@ describe("createCompositeProvider", () => {
     expect(calls).toContain("cwd:claude:someone");
     expect(calls).toContain("path:codex:codex-10");
   });
+
+  it("routes the fork arm by agent and answers unsupported providers in band (tier-1 Run 2 / A3)", async () => {
+    const calls: string[] = [];
+    const opencode = fake("opencode", calls);
+    opencode.forkSession = (id: string) => {
+      calls.push(`fork:opencode:${id}`);
+      return Promise.resolve({ ok: true, session: { id: "forked-1" } as never });
+    };
+    const p = createCompositeProvider(
+      { claude: fake("claude", calls), codex: fake("codex", calls), opencode },
+      (id) =>
+        id.startsWith("opencode")
+          ? "opencode"
+          : id.startsWith("codex")
+            ? "codex"
+            : "claude",
+    );
+    const forked = await p.forkSession?.("opencode-9");
+    expect(forked).toEqual({ ok: true, session: { id: "forked-1" } });
+    expect(calls).toContain("fork:opencode:opencode-9");
+    // A provider without the arm degrades in band — never a rejection.
+    await expect(p.forkSession?.("codex-9")).resolves.toMatchObject({
+      ok: false,
+    });
+  });
 });

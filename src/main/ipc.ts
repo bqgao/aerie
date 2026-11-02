@@ -18,7 +18,9 @@ import {
   type UpdateState,
   type DbInfo,
   type AppThemeSetting,
+  type OpencodeOpResult,
 } from "@shared/ipc";
+import { OPENCODE_FORK_UNAVAILABLE } from "./provider/opencode";
 import type {
   OpencodeHealth,
   ServerConnectResult,
@@ -710,6 +712,26 @@ export function registerIpc({
       );
     }
     return overviewNow();
+  });
+  // Tier-1 Run 2 / A3: fork one opencode session through its service API. The renderer never sees
+  // a URL or a credential — the provider resolves the local service or the id's own remote source.
+  // Never rejects: failures carry their display-grade reason in the result, and the renderer's
+  // menu shows it like Resume's inline error.
+  ipcMain.handle(IPC.opencodeFork, async (_e, sourceId: string) => {
+    if (!provider.forkSession)
+      return {
+        ok: false,
+        error: OPENCODE_FORK_UNAVAILABLE,
+      } satisfies OpencodeOpResult;
+    try {
+      return (await provider.forkSession(sourceId)) satisfies OpencodeOpResult;
+    } catch {
+      // Belt-and-braces: the arms are contracted to fail in band already.
+      return {
+        ok: false,
+        error: OPENCODE_FORK_UNAVAILABLE,
+      } satisfies OpencodeOpResult;
+    }
   });
   ipcMain.handle(
     IPC.launchPresetsGet,

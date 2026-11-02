@@ -181,6 +181,16 @@ export function PinnedSessionRow({
           {showReasonChip && (
             <SessionReasonChip session={session} className="self-start" />
           )}
+          {session.forkSourceId && (
+            // Tier-1 Run 2 / A3: the pinned row's fork provenance rides line-2, like the branch
+            // icon after it.
+            <span
+              className="shrink-0"
+              title={t.shell.sessionRow.forkedFrom(session.forkSourceId)}
+            >
+              <Icon name="git-branch" size={11} />
+            </span>
+          )}
           <span className="min-w-0 truncate">{repo}</span>
           {branch && (
             <>
