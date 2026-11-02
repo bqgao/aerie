@@ -8,9 +8,11 @@ import {
   type KeyboardEvent,
   type RefObject,
 } from "react";
+import { useStore } from "@nanostores/react";
 import type { Session } from "@shared/types";
 import { OPEN_IN_FAILED_MESSAGE, type OpenInTarget } from "@shared/ipc";
 import { AGENTS } from "@shared/agents";
+import { $promptQueues, clearPromptsFor, queuedCount } from "./prompt-queue";
 import { useI18n } from "../i18n";
 import {
   useSessionActions,
@@ -67,6 +69,9 @@ export interface SessionMenuController {
   openQueue: () => void;
   closeQueue: () => void;
   canPrompt: boolean;
+  /** Parked prompt count for this session + the in-band clear op (the menu's clear item). */
+  queuedCount: number;
+  clearQueued: () => void;
 }
 
 /** The Resume/Fork/End/Rename/Open-in state machine shared by every trigger that opens a session's
@@ -86,6 +91,9 @@ export function useSessionMenu(
   },
 ): SessionMenuController {
   const { t } = useI18n();
+  // The queue's live count feeds this menu's own "Clear queued prompts" item (tier-1 Run 2 / A4
+  // — clear rides the menu, not just the modal).
+  const queuedCountHere = queuedCount(useStore($promptQueues), session.id);
   const { onRename } = callbacks;
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -361,5 +369,10 @@ export function useSessionMenu(
     openQueue,
     closeQueue: () => setQueueOpen(false),
     canPrompt: caps.canPrompt,
+    queuedCount: queuedCountHere,
+    clearQueued: () => {
+      clearPromptsFor(session.id);
+      setOpen(false);
+    },
   };
 }

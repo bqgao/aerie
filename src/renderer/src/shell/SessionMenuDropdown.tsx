@@ -49,6 +49,8 @@ export function SessionMenuDropdown({
     openQueue,
     closeQueue,
     canPrompt,
+    queuedCount,
+    clearQueued,
   } = menu;
   const { t } = useI18n();
 
@@ -108,6 +110,14 @@ export function SessionMenuDropdown({
                         AGENTS[session.agent].label,
                       )
                 }
+              />
+              <MenuItem
+                // Tier-1 Run 2 / A4: the queue's menu-side clear ("clear via menu") — pinned to
+                // the prompt menu item, dimmed while nothing is queued.
+                icon="x"
+                label={t.shell.promptQueue.clearQueue}
+                onClick={clearQueued}
+                disabled={queuedCount === 0}
               />
 
               {resume.error && (
