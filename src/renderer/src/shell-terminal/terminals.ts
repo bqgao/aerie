@@ -153,7 +153,10 @@ export function ensureTerminal(): void {
  *  its router handler before the spawn invoke (the same race-free ordering the local spawn uses);
  *  the hook's spawn refusal (auth failure / unreachable host) closes the tab and leaves the sticky
  *  reason on the sidebar row. Returns the tab id. */
-export function createSshTerminal(server: { id: string; name: string }): string {
+export function createSshTerminal(server: {
+  id: string;
+  name: string;
+}): string {
   const id = newId();
   $terminals.set([
     ...$terminals.get(),

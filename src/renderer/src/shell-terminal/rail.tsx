@@ -161,10 +161,7 @@ function TerminalRailItem({
           // The ssh tab's icon IS its lamp (the same connectors-state vocabulary the Servers
           // section and ServerCard show): connecting pulses, connected glows teal, dropped red.
           <span
-            className={cx(
-              "shrink-0",
-              sshStateLampClass(state ?? "connecting"),
-            )}
+            className={cx("shrink-0", sshStateLampClass(state ?? "connecting"))}
           />
         ) : (
           <Icon name="square-terminal" size={14} />
@@ -245,7 +242,10 @@ function RailContextMenu({
             className={item}
             disabled={!serverConnected}
             onClick={run(() =>
-              openServerTerminal({ id: entry.serverId ?? "", name: entry.title }, { forceNew: true }),
+              openServerTerminal(
+                { id: entry.serverId ?? "", name: entry.title },
+                { forceNew: true },
+              ),
             )}
             type="button"
           >

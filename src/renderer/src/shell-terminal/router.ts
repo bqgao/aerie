@@ -105,23 +105,26 @@ export function createShellRouter(
     onExit: (cb) => api.onExit((id, code) => cb(id, code)),
     ack: api.ack,
   });
+  // Wrapper arrow fns (not `router.register` references): the unbound-method guard fires on a
+  // separated object method, though the router closes over no `this` — be explicit and stay silent.
   return {
-    register: router.register,
-    ackConsumed: router.ackConsumed,
+    register: (id, handlers) => router.register(id, handlers),
+    ackConsumed: (id, charCount) => router.ackConsumed(id, charCount),
   };
 }
 
 export function createSshRouter(
   api: Pick<SshTerminalApi, "onData" | "onExit" | "ack">,
 ): SshRouter {
-  const router = createCharRouter<[code: number, reason: SshTerminalExitReason]>({
+  const router = createCharRouter<
+    [code: number, reason: SshTerminalExitReason]
+  >({
     onData: api.onData,
-    onExit: (cb) =>
-      api.onExit((id, code, reason) => cb(id, code, reason)),
+    onExit: (cb) => api.onExit((id, code, reason) => cb(id, code, reason)),
     ack: api.ack,
   });
   return {
-    register: router.register,
-    ackConsumed: router.ackConsumed,
+    register: (id, handlers) => router.register(id, handlers),
+    ackConsumed: (id, charCount) => router.ackConsumed(id, charCount),
   };
 }

@@ -100,7 +100,7 @@ export function planServerTerminalOpen({
 /** Execute the double-click/menu plan for one server: revive re-dials its tab (buffer preserved),
  *  focus selects it, new creates the optimistic ssh tab and lets the instance's dial own the
  *  spawn — so a refused dial (auth failure / unreachable host) closes the tab before anything
- *  renders and the sticky reason stays on the sidebar row. */export function openServerTerminal(
+ *  renders and the sticky reason stays on the sidebar row. */ export function openServerTerminal(
   server: { id: string; name: string },
   opts?: { forceNew?: boolean },
 ): void {

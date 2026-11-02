@@ -15,9 +15,15 @@
  */
 import { FLOW } from "@shared/terminal";
 import { createDataBufferer, type DataBufferer } from "./data-bufferer";
-import type { SshShellStream, SshShellWindow } from "../servers/connection-manager";
+import type {
+  SshShellStream,
+  SshShellWindow,
+} from "../servers/connection-manager";
 
-export type { SshShellStream, SshShellWindow } from "../servers/connection-manager";
+export type {
+  SshShellStream,
+  SshShellWindow,
+} from "../servers/connection-manager";
 
 /** One open request. `id` is the renderer-minted ssh session id (unique per tab+attempt); rows/cols
  *  seed the remote pty's initial grid (the renderer's first fit corrects it through resize). */
@@ -33,7 +39,11 @@ export interface SshTerminalDeps {
    *  output chars through the end of this chunk (same scale as the recorder-less shell surfaces). */
   send: (id: string, data: string, offset: number) => void;
   /** Session ended. exitCode is nominal (0); the renderer branches on `reason`, not the code. */
-  notifyExit: (id: string, exitCode: number, reason: "dropped" | "ended") => void;
+  notifyExit: (
+    id: string,
+    exitCode: number,
+    reason: "dropped" | "ended",
+  ) => void;
   /** On a LIVE pooled client: open one interactive shell window, callback-async, EXACTLY ONE cb
    *  per call. A not-connected server (no live client to borrow), a pool whose client can't open
    *  channels, or a channel refused by the host all err the callback — the session then ends
@@ -103,8 +113,7 @@ export function createSshTerminalManager(
     term.stream = stream;
     stream.on("data", (chunk) => {
       if (terms.get(term.id) !== term) return; // torn down; a late chunk goes nowhere
-      const data =
-        typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      const data = typeof chunk === "string" ? chunk : chunk.toString("utf8");
       term.unacked += data.length;
       if (!term.paused && term.unacked > FLOW.highWaterChars) {
         term.paused = true;
@@ -120,11 +129,7 @@ export function createSshTerminalManager(
     });
     stream.on("close", () => {
       if (terms.get(term.id) !== term) return; // noteDown/close already recorded the end
-      endTerm(
-        term,
-        0,
-        term.userClosed || remoteExited ? "ended" : "dropped",
-      );
+      endTerm(term, 0, term.userClosed || remoteExited ? "ended" : "dropped");
     });
   };
 

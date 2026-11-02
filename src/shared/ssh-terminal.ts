@@ -29,7 +29,9 @@ export interface SshTerminalSpawnRequest {
   rows: number;
 }
 
-export type SshTerminalSpawnResult = { ok: true } | { ok: false; error: string };
+export type SshTerminalSpawnResult =
+  | { ok: true }
+  | { ok: false; error: string };
 
 /** Why an ssh terminal session ended. `dropped` = the pooled connection died mid-session — the
  *  tab survives behind a lock overlay (buffer preserved) until Reconnect re-dials. `ended` = the

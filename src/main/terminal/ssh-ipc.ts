@@ -4,17 +4,13 @@ import {
   type SshTerminalSpawnResult,
 } from "@shared/ssh-terminal";
 import type { SshClientRpc } from "../servers/connection-manager";
-import {
-  createSshTerminalManager,
-  type SshShellWindow,
-} from "./ssh-session";
+import type { DataBufferer } from "./data-bufferer";
+import { createSshTerminalManager, type SshShellWindow } from "./ssh-session";
 
 /** The slice of the connection pool the ssh terminals use. borrow-only: the pool stays the only
  *  owner of credentials and dial semantics (S1 pattern) — this layer never sees either. */
 export interface SshTerminalConnectionPool {
-  connect(
-    id: string,
-  ): Promise<{ ok: true } | { ok: false; error: string }>;
+  connect(id: string): Promise<{ ok: true } | { ok: false; error: string }>;
   withClient<T>(id: string, fn: (rpc: SshClientRpc) => T): T | null;
 }
 
@@ -48,11 +44,16 @@ export function normalizeSshShellWindow(
 export function registerSshTerminalIpc({
   window,
   connectionManager,
+  createBufferer,
 }: {
   window: BrowserWindow;
   connectionManager: SshTerminalConnectionPool;
+  /** Injected in tests (synchronous passthrough); defaults to the 5ms coalescer (like every
+   *  other terminal manager — ssh-ipc is the composition ROOT for this one, so tests inject here). */
+  createBufferer?: (flush: (data: string) => void) => DataBufferer;
 }): { noteDown: (serverId: string) => void } {
   const manager = createSshTerminalManager({
+    createBufferer,
     send: (id, data, offset) => {
       if (!window.isDestroyed())
         window.webContents.send(SSH_TERMINAL.data, id, data, offset);
@@ -75,7 +76,7 @@ export function registerSshTerminalIpc({
         }
         rpc.shell(openWindow, (err, stream) =>
           cb(
-            err === undefined
+            err === undefined || err === null
               ? null
               : err instanceof Error
                 ? err
@@ -85,8 +86,7 @@ export function registerSshTerminalIpc({
         );
         return true;
       });
-      if (!borrowed)
-        cb(new Error("The server is not connected."), null);
+      if (!borrowed) cb(new Error("The server is not connected."), null);
     },
   });
 
