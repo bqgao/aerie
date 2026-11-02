@@ -432,6 +432,17 @@ export const en = {
     sessionList: {
       ungrouped: "(no project)",
     },
+    // S2's Servers section in the sessions rail (ServerRailSection): titles, row actions, and the
+    // context menu. Reuses the settings.servers wording family wherever the strings coincide.
+    servers: {
+      sectionTitle: "Servers",
+      emptyState: "No servers saved — add one in Settings",
+      openTerminal: "Open Terminal",
+      newTabToServer: "New Tab to This Server",
+      editInSettings: "Edit in Settings…",
+      connect: "Connect",
+      disconnect: "Disconnect",
+    },
   },
   /** Chrome for both terminal surfaces: the interactive shell-terminal pane's tab rail
    *  (rail.tsx) and its context menu, AND the renderer-synthesized banners each terminal writes
@@ -451,6 +462,17 @@ export const en = {
     defaultTitle: "Terminal",
     processExited: "process exited",
     spawnFailed: (message: string) => `Terminal failed to start: ${message}`,
+    // S2: the ssh tab's lock overlay states — connecting covers the first dial and every
+    // Reconnect (which switches to `reconnecting` wording once a tab has lived), dropped is the
+    // message line under the frozen buffer, reconnectFailed interpolates a refused re-dial's
+    // in-band error (never credentials — the pool's sticky row reason).
+    ssh: {
+      connecting: "Connecting…",
+      reconnecting: "Reconnecting…",
+      droppedOverlay: "Connection lost",
+      reconnect: "Reconnect",
+      reconnectFailed: (message: string) => `Could not reconnect: ${message}`,
+    },
   },
   workspace: {
     emptyStates: {

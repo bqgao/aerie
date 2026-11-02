@@ -5,6 +5,14 @@ import { Icon } from "../ui/icons";
 import { useI18n } from "../i18n";
 import { setTerminalTakeover } from "./store";
 import {
+  $serverStatus,
+  $sshTabState,
+  openServerTerminal,
+  reconnectSshTerminal,
+  sshStateLampClass,
+  type SshTabState,
+} from "./ssh-model";
+import {
   $activeTerminalId,
   $terminals,
   closeAllTerminals,
@@ -31,6 +39,11 @@ export function TerminalRail() {
   const terminals = useStore($terminals);
   const activeId = useStore($activeTerminalId);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const menuState = useStore($sshTabState);
+  const serverStatus = useStore($serverStatus);
+  const menuEntry = menu
+    ? terminals.find((term) => term.id === menu.termId)
+    : undefined;
 
   return (
     // The subtle quaternary left edge separates the rail from the terminal body. The row-mode
@@ -47,6 +60,7 @@ export function TerminalRail() {
             index={index}
             key={term.id}
             onMenu={(x, y) => setMenu({ x, y, termId: term.id })}
+            state={menuState.get(term.id)}
             term={term}
           />
         ))}
@@ -80,9 +94,19 @@ export function TerminalRail() {
 
       {menu && (
         <RailContextMenu
-          canCloseOthers={terminals.length > 1}
+          entry={menuEntry}
           menu={menu}
           onClose={() => setMenu(null)}
+          serverConnected={
+            menuEntry?.kind === "ssh"
+              ? serverStatus[menuEntry.serverId ?? ""]?.status === "connected"
+              : false
+          }
+          sshState={
+            menuEntry?.kind === "ssh"
+              ? (menuState.get(menuEntry.id) ?? undefined)
+              : undefined
+          }
         />
       )}
     </div>
@@ -93,11 +117,14 @@ function TerminalRailItem({
   term,
   index,
   active,
+  state,
   onMenu,
 }: {
   term: TerminalEntry;
   index: number;
   active: boolean;
+  /** S2: the ssh session state behind this tab (undefined for pty tabs). */
+  state: SshTabState | undefined;
   onMenu: (x: number, y: number) => void;
 }) {
   const label = `${index + 1}. ${term.title}`;
@@ -130,7 +157,18 @@ function TerminalRailItem({
         title={label}
         type="button"
       >
-        <Icon name="square-terminal" size={14} />
+        {term.kind === "ssh" ? (
+          // The ssh tab's icon IS its lamp (the same connectors-state vocabulary the Servers
+          // section and ServerCard show): connecting pulses, connected glows teal, dropped red.
+          <span
+            className={cx(
+              "shrink-0",
+              sshStateLampClass(state ?? "connecting"),
+            )}
+          />
+        ) : (
+          <Icon name="square-terminal" size={14} />
+        )}
       </button>
     </li>
   );
@@ -139,13 +177,19 @@ function TerminalRailItem({
 /** Minimal local context menu (cbw has no shared primitive): a fixed-position card dismissed by
  *  click-away or Escape, clamped inside the viewport. */
 function RailContextMenu({
+  entry,
   menu,
-  canCloseOthers,
   onClose,
+  serverConnected,
+  sshState,
 }: {
   menu: MenuState;
-  canCloseOthers: boolean;
+  entry: TerminalEntry | undefined;
   onClose: () => void;
+  /** ssh tabs only: whether the tab's server is pool-connected ("New Tab to This Server" rides a
+   *  live dial; forcing another dial to a down host would just re-fail in-band). */
+  serverConnected: boolean;
+  sshState: SshTabState | undefined;
 }) {
   const { t } = useI18n();
   useEffect(() => {
@@ -155,6 +199,7 @@ function RailContextMenu({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+  const isSsh = entry?.kind === "ssh";
 
   const item =
     "block w-full px-2.5 py-1 text-left text-[0.6875rem] text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent";
@@ -181,6 +226,32 @@ function RailContextMenu({
           top: Math.min(menu.y, window.innerHeight - 140),
         }}
       >
+        {isSsh && sshState === "dropped" && entry && (
+          <button
+            className={item}
+            onClick={run(() => {
+              selectTerminal(entry.id);
+              reconnectSshTerminal(entry.id);
+            })}
+            type="button"
+          >
+            {t.terminal.ssh.reconnect}
+          </button>
+        )}
+        {isSsh && entry && (
+          // DESIGN_NOTES §S2: duplicating a terminal to the same server is the explicit menu
+          // item, never an accidental stacked dial from double-click.
+          <button
+            className={item}
+            disabled={!serverConnected}
+            onClick={run(() =>
+              openServerTerminal({ id: entry.serverId ?? "", name: entry.title }, { forceNew: true }),
+            )}
+            type="button"
+          >
+            {t.shell.servers.newTabToServer}
+          </button>
+        )}
         <button
           className={item}
           onClick={run(() => closeTerminal(menu.termId))}
@@ -190,7 +261,7 @@ function RailContextMenu({
         </button>
         <button
           className={item}
-          disabled={!canCloseOthers}
+          disabled={!isSsh && terminalsLength() < 2}
           onClick={run(() => closeOtherTerminals(menu.termId))}
           type="button"
         >
@@ -210,4 +281,8 @@ function RailContextMenu({
       </div>
     </>
   );
+}
+
+function terminalsLength(): number {
+  return $terminals.get().length;
 }

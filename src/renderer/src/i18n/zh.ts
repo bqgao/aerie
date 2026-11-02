@@ -385,6 +385,16 @@ export const zh: Translations = {
     sessionList: {
       ungrouped: "（无项目）",
     },
+    // S2：会话栏顶部的服务器区（ServerRailSection）。
+    servers: {
+      sectionTitle: "服务器",
+      emptyState: "未保存服务器——在设置中添加",
+      openTerminal: "打开终端",
+      newTabToServer: "为此服务器新建标签",
+      editInSettings: "在设置中编辑…",
+      connect: "连接",
+      disconnect: "断开连接",
+    },
   },
   terminal: {
     tabListAria: "终端",
@@ -394,6 +404,14 @@ export const zh: Translations = {
     defaultTitle: "终端",
     processExited: "进程已退出",
     spawnFailed: (message) => `终端启动失败：${message}`,
+    // S2：SSH 标签的锁定遮罩状态。
+    ssh: {
+      connecting: "正在连接…",
+      reconnecting: "正在重连…",
+      droppedOverlay: "连接已断开",
+      reconnect: "重新连接",
+      reconnectFailed: (message) => `无法重连：${message}`,
+    },
   },
   workspace: {
     emptyStates: {

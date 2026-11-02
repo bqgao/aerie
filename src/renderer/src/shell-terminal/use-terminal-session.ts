@@ -42,6 +42,8 @@ const SNAPSHOT_THROTTLE_MS = 750;
 // exit here — but React skips effect cleanups on teardown, so the per-instance `disposed` flag
 // never flips. Without this guard those exits would closeTerminal() and wipe the persisted tab
 // list right before relaunch reads it. A real `exit`/Ctrl-D still closes the tab (flag stays false).
+// The ssh session hook shares the same guard (exported) — its exit push must not closeTerminal
+// during teardown either.
 let appTearingDown = false;
 if (typeof window !== "undefined") {
   const markTearingDown = (): void => {
@@ -49,6 +51,10 @@ if (typeof window !== "undefined") {
   };
   window.addEventListener("pagehide", markTearingDown);
   window.addEventListener("beforeunload", markTearingDown);
+}
+
+export function appIsTearingDown(): boolean {
+  return appTearingDown;
 }
 
 type TerminalStatus = "starting" | "open" | "closed";

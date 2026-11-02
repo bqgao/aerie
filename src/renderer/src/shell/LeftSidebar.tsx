@@ -44,6 +44,7 @@ import { SessionFilterMenu } from "./SessionFilterMenu";
 import { ProjectGroupRow } from "./ProjectGroupRow";
 import { placeAnchoredMenu } from "./anchored-menu-position";
 import { defaultSpawnAgent, saveLastAgent } from "./agent-preference";
+import { ServerRailSection } from "./ServerRailSection";
 
 /** How many hidden entries one "Older (N)" expansion (or one "Show more") reveals. */
 const OLDER_PAGE_SIZE = 10;
@@ -581,6 +582,10 @@ export function LeftSidebar({
         </div>
 
         <OverlayScroll className="min-h-0 flex-1" contentClassName="pb-2">
+          {/* S2: the Servers section is the rail's TOP group, above every session territory
+              (pinned + project groups). Server rows are not session rows — they never enter the
+              collapse-all/filter machinery below. */}
+          <ServerRailSection onRoute={onRoute} />
           <div>
             <div className="sticky top-0 z-10 flex items-center bg-(--ui-sidebar-surface-background) px-2.5 pb-1 pt-1.5">
               <SidebarPanelLabel className="pl-2">

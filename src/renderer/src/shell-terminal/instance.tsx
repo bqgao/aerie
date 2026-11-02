@@ -11,6 +11,7 @@ import { useTerminalSession } from "./use-terminal-session";
 // `.xterm.xterm` rule — creates any visible gap), so it still follows Terminal theme, not App theme.
 const INSTANCE_CLASS =
   "absolute inset-0 flex flex-col bg-(--terminal-editor-surface-background)";
+export { INSTANCE_CLASS };
 
 /** One persistent xterm+pty. Every open tab stays mounted (its shell and scrollback survive tab
  *  switches); only the active one is shown. */

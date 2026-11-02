@@ -12,6 +12,13 @@ export interface TerminalEntry {
   /** Working directory, snapshotted once at creation. Terminals live outside session state — the
    *  only thing they inherit is this initial cwd; switching sessions never moves or recreates one. */
   cwd: string;
+  /** S2: the tab kind. "local" = a node-pty shell (every existing entry keeps reading as local —
+   *  the field is optional on purpose); "ssh" = a remote shell channel bound to `serverId`'s
+   *  saved server profile, titled by the server name. */
+  kind?: "local" | "ssh";
+  /** ssh kind only: the saved server profile id this tab's shell channel rides (revive-in-place
+   *  and the sidebar row match on it). */
+  serverId?: string;
   /** Serialized xterm scrollback from the last run, replayed on relaunch so the tab reopens with
    *  its recent history (VS Code parity). Processes are NOT revived — a fresh shell starts beneath
    *  the restored buffer. */
@@ -36,11 +43,20 @@ function sanitize(value: unknown): TerminalEntry | null {
   const title = typeof r.title === "string" ? r.title.trim() : "";
   const reviveBuffer =
     typeof r.reviveBuffer === "string" ? r.reviveBuffer : undefined;
+  const kind = r.kind === "ssh" ? ("ssh" as const) : ("local" as const);
+  const serverId =
+    typeof r.serverId === "string" && r.serverId.length > 0
+      ? // ssh-kind on purpose: a persisted ssh entry survives only one page run (see load).
+        kind === "ssh"
+        ? r.serverId
+        : undefined
+      : undefined;
   return {
     id,
     title: title || tNow().terminal.defaultTitle,
     auto: typeof r.auto === "boolean" ? r.auto : true,
     cwd: typeof r.cwd === "string" ? r.cwd : "",
+    ...(kind === "ssh" ? { kind, serverId } : {}),
     ...(reviveBuffer ? { reviveBuffer } : {}),
   };
 }
@@ -59,6 +75,11 @@ function load(): PersistedState {
       ? record.terminals
           .map(sanitize)
           .filter((t): t is TerminalEntry => Boolean(t))
+          // S2: ssh tabs are NOT restored. A tab's shell channel is a live pooled dial with
+          // nothing to revive across a relaunch, and an automatic re-dial on every app boot is
+          // exactly what must not happen — a dropped/mid-dial entry is kept only while the page
+          // runs (persist still serializes it so switching tabs keeps it).
+          .filter((t) => t.kind !== "ssh")
       : [];
     const active =
       typeof record.activeTerminalId === "string" &&
@@ -125,6 +146,31 @@ export function createTerminal(
 /** Guarantee at least one tab exists when the pane opens. */
 export function ensureTerminal(): void {
   if ($terminals.get().length === 0) createTerminal();
+}
+
+/** S2: append an ssh-kind tab bound to a saved server, titled by the server name, and focus it.
+ *  Created OPTIMISTICALLY — before the session dial resolves — so the instance mounts and registers
+ *  its router handler before the spawn invoke (the same race-free ordering the local spawn uses);
+ *  the hook's spawn refusal (auth failure / unreachable host) closes the tab and leaves the sticky
+ *  reason on the sidebar row. Returns the tab id. */
+export function createSshTerminal(server: { id: string; name: string }): string {
+  const id = newId();
+  $terminals.set([
+    ...$terminals.get(),
+    {
+      id,
+      // Profiles require a non-empty name (enforced at save); the fallback is defensive only.
+      title: server.name.trim() || tNow().terminal.defaultTitle,
+      // `auto` is the adopt-resolved-shell-name flag; an ssh tab's label is the server name the
+      // user may still rename by hand, so it starts manual.
+      auto: false,
+      cwd: "",
+      kind: "ssh",
+      serverId: server.id,
+    },
+  ]);
+  $activeTerminalId.set(id);
+  return id;
 }
 
 export function selectTerminal(id: string): void {
