@@ -10,43 +10,40 @@ import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import {
   createPdfTempService,
+  pdfFileUrlOf,
   type PdfTempFs,
   type PdfTempRemote,
 } from "../../src/main/fileio/pdftemp-service";
-import { pdfFileUrlOf } from "../../src/main/fileio/pdftemp-service";
 
 /** In-memory PdfTempFs: directories are implicit (a created dir just records files). */
-const fakeFs = (): PdfTempFs & {
-  saves: Map<string, Buffer>;
-  created: string[];
-} => {
+const fakeFs = (): PdfTempFs & { saves: Map<string, Buffer> } => {
   const saves = new Map<string, Buffer>();
-  const created: string[] = [];
   return {
     saves,
-    created,
-    async mkdirp(path) {
-      created.push(path);
+    mkdirp() {
+      return Promise.resolve();
     },
-    async writeNew(path, bytes) {
+    writeNew(path, bytes) {
       saves.set(path, Buffer.from(bytes));
-      return { ok: true };
+      return Promise.resolve({ ok: true });
     },
-    async rename(from, to) {
+    rename(from, to) {
       const buf = saves.get(from);
-      if (buf === undefined) return { ok: false, message: "ENOENT: " + from };
+      if (buf === undefined)
+        return Promise.resolve({ ok: false, message: "ENOENT: " + from });
       saves.delete(from);
       saves.set(to, buf);
-      return { ok: true };
+      return Promise.resolve({ ok: true });
     },
-    async exists(path) {
-      return saves.has(path);
+    exists(path) {
+      return Promise.resolve(saves.has(path));
     },
-    async removeQuiet(path) {
+    removeQuiet(path) {
       saves.delete(path);
+      return Promise.resolve();
     },
-    async listFiles() {
-      return [...saves.keys()];
+    listFiles() {
+      return Promise.resolve([...saves.keys()]);
     },
   };
 };
@@ -55,15 +52,15 @@ const sha = (buf: Buffer): string =>
   createHash("sha256").update(buf).digest("hex");
 
 const remoteOk = (bytes: Buffer): PdfTempRemote => ({
-  async sizeOf() {
-    return { ok: true, size: bytes.length };
+  sizeOf() {
+    return Promise.resolve({ ok: true, size: bytes.length });
   },
-  async readPage(_serverId, _path, position, length) {
-    return {
+  readPage(_serverId, _path, position, length) {
+    return Promise.resolve({
       ok: true,
       buf: Buffer.from(bytes.subarray(position, position + length)),
       bytes: Math.min(length, bytes.length - position),
-    };
+    });
   },
 });
 
@@ -89,21 +86,17 @@ describe("the pull: one server PDF → one content-hash temp copy", () => {
     expect([...fs.saves.keys()]).toEqual([finalPath]);
   });
 
-  it("a second open of identical bytes re-uses the cached copy (no re-pull)", async () => {
+  it("a re-open of the same path answers the memoized copy (no re-pull)", async () => {
     const bytes = Buffer.from("pdf-bytes-one");
-    const pulls = vi.fn();
-    const pull: PdfTempRemote = {
-      ...remoteOk(bytes),
-      readPage(...args: Parameters<PdfTempRemote["readPage"]>) {
-        pulls(args[2]); // record only the position
-        return remoteOk(bytes).readPage(...args);
-      },
-    };
+    const fallback = remoteOk(bytes);
+    const pulls = vi.fn((...args: Parameters<PdfTempRemote["readPage"]>) =>
+      fallback.readPage(...args),
+    );
     const fs = fakeFs();
     const service = createPdfTempService({
       dir: () => "/ud",
       fs,
-      remote: pull,
+      remote: { ...fallback, readPage: pulls },
       hash: sha,
     });
     const first = await service.open("srv-acme", "/srv/report.pdf");
@@ -129,15 +122,18 @@ describe("the pull: one server PDF → one content-hash temp copy", () => {
 
 describe("the in-band refusals", () => {
   it("refuses over the 20MiB cap BEFORE any read moves, with the tooLarge crumb", async () => {
-    const readPage = vi.fn();
+    const readPage = vi.fn(() =>
+      Promise.resolve({ ok: true, buf: Buffer.alloc(0), bytes: 0 }),
+    );
     const service = createPdfTempService({
       dir: () => "/ud",
       fs: fakeFs(),
       remote: {
-        async sizeOf() {
-          return { ok: true, size: 21 * 1024 * 1024 };
+        sizeOf() {
+          return Promise.resolve({ ok: true, size: 21 * 1024 * 1024 });
         },
-        readPage: readPage as unknown as PdfTempRemote["readPage"],
+        readPage: () =>
+          Promise.resolve({ ok: true, buf: Buffer.alloc(0), bytes: 0 }),
       },
       hash: sha,
     });
@@ -153,10 +149,16 @@ describe("the in-band refusals", () => {
       dir: () => "/ud",
       fs: fakeFs(),
       remote: {
-        async sizeOf() {
-          return { ok: false, message: "no such file", notFound: true };
+        sizeOf() {
+          return Promise.resolve({
+            ok: false,
+            message: "no such file",
+            notFound: true,
+          });
         },
-        readPage: async () => ({ ok: false, message: "unreached" }),
+        readPage() {
+          return Promise.resolve({ ok: false, message: "unreached" });
+        },
       },
       hash: sha,
     });
@@ -171,13 +173,15 @@ describe("the in-band refusals", () => {
       dir: () => "/ud",
       fs,
       remote: {
-        async sizeOf() {
-          return { ok: true, size: 1000 };
+        sizeOf() {
+          return Promise.resolve({ ok: true, size: 1000 });
         },
-        async readPage(_serverId, _path, position) {
-          return position > 0
-            ? { ok: false, message: "socket died" }
-            : { ok: true, buf: Buffer.alloc(0), bytes: 256 };
+        readPage(_serverId, _path, position) {
+          return Promise.resolve(
+            position > 0
+              ? { ok: false, message: "socket died" }
+              : { ok: true, buf: Buffer.alloc(0), bytes: 256 },
+          );
         },
       },
       hash: sha,
@@ -205,7 +209,7 @@ describe("the in-band refusals", () => {
 });
 
 describe("the will-quit sweep", () => {
-  it("removes every cached copy in the dir (best-effort when empty/missing)", async () => {
+  it("removes every cached copy in the dir (no-op when the dir is gone)", async () => {
     const bytes = Buffer.from("pdf-bytes-one");
     const fs = fakeFs();
     const service = createPdfTempService({
@@ -220,13 +224,12 @@ describe("the will-quit sweep", () => {
     expect([...fs.saves.keys()]).toEqual([]);
 
     // a vanished dir answers null → the sweep is a no-op, not a rejection
-    const bare = fakeFs();
     const gone = createPdfTempService({
       dir: () => "/ud/cache/pdf",
       fs: {
-        ...bare,
-        async listFiles() {
-          return null;
+        ...fakeFs(),
+        listFiles() {
+          return Promise.resolve(null);
         },
       },
       remote: remoteOk(bytes),
