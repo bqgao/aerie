@@ -76,24 +76,33 @@ export interface SearchDoc {
 const INSERT_FTS =
   "INSERT INTO fts (body, agent, sessionId, sessionTitle, directory, timeMs) VALUES (?,?,?,?,?,?)";
 const INSERT_DOC = "INSERT INTO docs (docid, path) VALUES (?,?)";
+const SELECT_LAST_DOCID = "SELECT last_insert_rowid() AS docid";
 
-/** Insert one document and register its rowid under the source path, in a shared transaction so a
- *  mid-file failure leaves the path fully indexed or not at all. The docid is read back via
- *  SQLite's `last_insert_rowid()` (the seam exposes no driver-specific run() result). */
-export function insertSearchDoc(db: SqliteDb, doc: SearchDoc): void {
+/** Insert documents and register their rowids under the source path, in ONE transaction so a
+ *  mid-batch failure leaves the path wholly indexed or not at all. Docids are read back via
+ *  SQLite's `last_insert_rowid()` (the seam exposes no driver-specific run() result). Empty
+ *  batches are a cheap no-op. */
+export function insertSearchDocs(
+  db: SqliteDb,
+  docs: readonly SearchDoc[],
+): void {
+  if (docs.length === 0) return;
+  const insertFts = db.prepare(INSERT_FTS);
+  const insertDoc = db.prepare(INSERT_DOC);
+  const lastDocid = db.prepare(SELECT_LAST_DOCID);
   transaction(db, () => {
-    db.prepare(INSERT_FTS).run(
-      doc.body,
-      doc.agent,
-      doc.sessionId,
-      doc.sessionTitle,
-      doc.directory,
-      doc.timeMs,
-    );
-    const docid = (
-      db.prepare("SELECT last_insert_rowid() AS docid").get() as { docid: unknown }
-    ).docid;
-    db.prepare(INSERT_DOC).run(docid, doc.path);
+    for (const doc of docs) {
+      insertFts.run(
+        doc.body,
+        doc.agent,
+        doc.sessionId,
+        doc.sessionTitle,
+        doc.directory,
+        doc.timeMs,
+      );
+      const docid = (lastDocid.get() as { docid: unknown }).docid;
+      insertDoc.run(docid, doc.path);
+    }
   });
 }
 
@@ -104,6 +113,17 @@ export function deleteSearchDocsForPath(db: SqliteDb, path: string): void {
       "DELETE FROM fts WHERE rowid IN (SELECT docid FROM docs WHERE path = ?)",
     ).run(path);
     db.prepare("DELETE FROM docs WHERE path = ?").run(path);
+  });
+}
+
+/** Every source path whose rows must go (the opencode re-backfill on drift recovery clears the
+ *  whole `opencode:` namespace) — one key prefix. */
+export function dropSearchDocsByPrefix(db: SqliteDb, prefix: string): void {
+  transaction(db, () => {
+    db.prepare(
+      "DELETE FROM fts WHERE rowid IN (SELECT docid FROM docs WHERE path LIKE ? || '%')",
+    ).run(prefix);
+    db.prepare("DELETE FROM docs WHERE path LIKE ? || '%'").run(prefix);
   });
 }
 
@@ -147,10 +167,7 @@ export function readSearchFiles(db: SqliteDb): Map<string, SearchFileCursor> {
 
 /** Upsert one file's cursor (agent/sessionId/title/mtime/offset full-replace — values are only
  *  ever advanced by the scan, never merged). */
-export function upsertSearchFile(
-  db: SqliteDb,
-  cursor: SearchFileCursor,
-): void {
+export function upsertSearchFile(db: SqliteDb, cursor: SearchFileCursor): void {
   db.prepare(
     `INSERT INTO files (path, agent, sessionId, title, mtime, offset)
      VALUES (@path, @agent, @sessionId, @title, @mtime, @offset)
@@ -212,7 +229,10 @@ export function readOpencodeCursor(db: SqliteDb): OpencodeCursor {
   };
 }
 
-export function upsertOpencodeCursor(db: SqliteDb, cursor: OpencodeCursor): void {
+export function upsertOpencodeCursor(
+  db: SqliteDb,
+  cursor: OpencodeCursor,
+): void {
   db.prepare(
     `INSERT INTO sources (source, unavailable, cursor_time, cursor_seq, error)
      VALUES ('opencode', @unavailable, @cursorTime, @cursorSeq, @error)

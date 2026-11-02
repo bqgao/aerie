@@ -19,4 +19,3 @@ export function openReadonlyDb(path: string): SqliteDb {
   const db = new Database(path, { readonly: true, fileMustExist: true });
   return wrap(db);
 }
-
