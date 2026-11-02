@@ -83,6 +83,8 @@ export const IPC = {
   setSessionPinned: "session:setPinned",
   /** Tier-1 Run 2 / A3: fork an opencode session through its service API. */
   opencodeFork: "opencode:fork",
+  /** Tier-1 Run 2 / A4: deliver one queued prompt to an opencode session's service API. */
+  opencodePrompt: "opencode:prompt",
   setProjectPlacement: "project:setPlacement",
   getToolResult: "toolResult:get",
   updateGetState: "update:getState",
@@ -327,6 +329,9 @@ export interface IpcApi {
    *  main resolves every URL/credential). Fails in band: `error` carries the display-grade
    *  reason; `session` carries the optimistic draft of the NEW session on success. */
   opencodeFork(sourceId: string): Promise<OpencodeOpResult>;
+  /** Tier-1 Run 2 / A4: deliver one prompt to an opencode session's service API (credentials and
+   *  the remote tunnel resolve main-side only). Fails in band; the queue keeps the prompt. */
+  opencodePrompt(sessionId: string, text: string): Promise<OpencodeOpResult>;
   /** Every saved launch-args preset, keyed by agent (the New-session preset picker). */
   getLaunchPresets(): Promise<LaunchPresets>;
   /** Replace the whole presets object — the renderer owns list edits and ships the result back. */

@@ -277,6 +277,19 @@ export const zh: Translations = {
       reasonIdle: "空闲",
       reasonPermission: (tool) => `等待授权：${tool}`,
     },
+    // Tier-1 Run 2 / A4：按会话排队的提示文案。
+    promptQueue: {
+      menuLabel: "排队提示…",
+      clearQueue: "清空排队提示",
+      modalTitle: "排队提示",
+      placeholder: "输入要排队的提示…",
+      inputLabel: "要排队的提示",
+      modalHint: "回车入队 · Shift+Enter 换行",
+      modalEmpty: "暂无排队提示。",
+      queuedPrompts: (count) => `${count} 条排队提示`,
+      // 送达失败但没有具体原因时的兜底文案（永远不抛异常）。
+      sendFailed: "提示未能送达。",
+    },
     sessionRow: {
       // Pass R: the remote-row server badge tooltip — name first, host after the dot.
       serverBadge: (name, host) =>

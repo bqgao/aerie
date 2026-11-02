@@ -14,8 +14,12 @@ describe("AGENTS registry", () => {
       expect(AGENTS[id].binary.length).toBeGreaterThan(0);
     }
   });
-  it("claude has every capability; codex has transcript + telemetry + rate limits + resume", () => {
-    expect(Object.values(AGENTS.claude.capabilities).every(Boolean)).toBe(true);
+  it("claude has every capability except the service-API prompt op; codex has transcript + telemetry + rate limits + resume", () => {
+    // canPrompt is the one deliberate exception: it denotes the v2 service API's POST prompt op
+    // (tier-1 Run 2 / A4), which no CLI carries — the opencode descriptor declares it instead.
+    const { canPrompt, ...claudeCaps } = AGENTS.claude.capabilities;
+    expect(canPrompt).toBe(false);
+    expect(Object.values(claudeCaps).every(Boolean)).toBe(true);
     const {
       hasTranscript,
       hasTelemetry,

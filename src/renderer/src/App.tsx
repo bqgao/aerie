@@ -20,6 +20,11 @@ import { orderedSessions } from "@shared/overview";
 import { applyTitleOverrides } from "@shared/title-override";
 import { isUpdatePending } from "@shared/update";
 import { useI18n } from "./i18n";
+import {
+  $promptQueues,
+  autoSendable,
+  reducePrompts,
+} from "./shell/prompt-queue";
 import { Workspace } from "./workspace/Workspace";
 import { useMetrics } from "./workspace/use-metrics";
 import { terminalStore } from "./terminal/terminal-store-instance";
@@ -219,6 +224,17 @@ export function App() {
     setEnding((prev) => pruneEnding(prev, sessions));
   }, [sessions]);
 
+  // Tier-1 Run 2 / A4: the queue's dispatcher rides the poll ticks. Every tick the overview lands
+  // is one poll: each queued session whose state reads waiting sends its head — ONE per tick —
+  // via the prompt arm (opencode-only, gated in the reducer). fail-in-band: a failure keeps the
+  // head with its reason and retries next tick.
+  useEffect(() => {
+    for (const due of autoSendable($promptQueues.get(), sessions)) {
+      void sendQueuedPrompt(due.sessionId, due.id, due.text);
+    }
+    // `sessions` is the poll's change signal, exactly like the prune effects above.
+  }, [sessions]);
+
   // Follow a /clear rotation: the live pty kept running but Claude rotated its session id from `from` to
   // `to`. Migrate the terminal handle and re-point the open workspace onto `to`. Rename the row wherever it
   // lives — the discovered list once a sync has indexed it, OR the optimistic drafts when /clear lands
@@ -402,8 +418,9 @@ export function App() {
         const result = await window.api.opencodeFork(source.id);
         if (!result.ok || !result.session)
           throw new Error(result.error ?? t.workspace.resume.couldNotFork);
-        setDrafts((ds) => [result.session!, ...ds]);
-        setSelectedId(result.session!.id);
+        const draft = result.session;
+        setDrafts((ds) => [draft, ...ds]);
+        setSelectedId(draft.id);
       } finally {
         forkingRef.current.delete(source.id);
       }
@@ -432,6 +449,48 @@ export function App() {
       throw e;
     } finally {
       forkingRef.current.delete(source.id);
+    }
+  }
+
+  // Tier-1 Run 2 / A4: one queued head's delivery — dismiss the send gate, await the (never-
+  // rejecting) arm, then settle the reducer: success drops the head, failure keeps it with its
+  // in-band reason. Settling reads the queue's LIVE value so a clear/crash mid-flight can't
+  // resurrect a stale head.
+  async function sendQueuedPrompt(
+    sessionId: string,
+    id: string,
+    text: string,
+  ): Promise<void> {
+    const before = $promptQueues.get();
+    const started = reducePrompts(before, {
+      type: "sendStart",
+      sessionId,
+      id,
+    });
+    if (started === before) return; // another tick (or the modal) already holds this send
+    $promptQueues.set(started);
+    const failureText = t.shell.promptQueue.sendFailed;
+    try {
+      const result = await window.api.opencodePrompt(sessionId, text);
+      $promptQueues.set(
+        reducePrompts($promptQueues.get(), {
+          type: result.ok ? "sendDone" : "sendFailed",
+          sessionId,
+          id,
+          error: result.error ?? failureText,
+        }),
+      );
+    } catch {
+      // Satisfies the never-rejects rule at the dispatch seam too: the arm already failed in
+      // band, so this tail should be unreachable — keep the head, mark it, retry next tick.
+      $promptQueues.set(
+        reducePrompts($promptQueues.get(), {
+          type: "sendFailed",
+          sessionId,
+          id,
+          error: failureText,
+        }),
+      );
     }
   }
 

@@ -38,6 +38,7 @@ export type IconName =
   | "id-card"
   | "info"
   | "loader-circle"
+  | "message-square"
   | "monitor"
   | "moon"
   | "palette"

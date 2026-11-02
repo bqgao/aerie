@@ -51,6 +51,7 @@ import {
   setRailListMode,
   type RailListMode,
 } from "./inbox-model";
+import { $promptQueues, queuedCount, queuedError } from "./prompt-queue";
 import { useSessionPreview } from "./session-preview-card";
 import { SegmentedSwitch } from "../ui/SegmentedSwitch";
 import { useStore } from "@nanostores/react";
@@ -119,6 +120,12 @@ export function LeftSidebar({
   const inbox = railMode === "inbox";
   // The rail's hover preview (tier-1 spec Run 1 / A2): one card, fed by the row adapters below.
   const preview = useSessionPreview(sessions, homeDir);
+  // The prompt queues' live snapshot for the row badges (tier-1 spec Run 2 / A4).
+  const queues = useStore($promptQueues);
+  const queuedFor = (id: string): { count: number; error: string | null } => ({
+    count: queuedCount(queues, id),
+    error: queuedError(queues, id),
+  });
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   // Explicit per-parent overrides only. Families default collapsed and expand only from their
@@ -340,6 +347,7 @@ export function LeftSidebar({
           showReasonChip={inbox}
           onPreviewEnter={preview.onRowEnter}
           onPreviewLeave={preview.onRowLeave}
+          queued={queuedFor(node.session.id)}
           onToggleChildren={
             node.children.length > 0
               ? () => {
@@ -636,6 +644,7 @@ export function LeftSidebar({
                     showReasonChip={inbox}
                     onPreviewEnter={preview.onRowEnter}
                     onPreviewLeave={preview.onRowLeave}
+                    queued={queuedFor(s.id)}
                   />
                 ))}
               </div>

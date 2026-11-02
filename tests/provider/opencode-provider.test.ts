@@ -449,6 +449,77 @@ function messageRequests(requests: string[]): string[] {
   );
 }
 
+describe("opencode prompt op (tier-1 Run 2 / A4)", () => {
+  it("POSTs the text envelope and succeeds on the verified contract", async () => {
+    const service = fakeService(BASE);
+    const requests: string[] = [];
+    let postBody: string | undefined;
+    const fetchFn = (url: string, init?: RequestInit): Promise<Response> => {
+      requests.push(`${init?.method ?? "GET"} ${url}`);
+      if (typeof init?.body === "string") postBody = init.body;
+      if (url.includes("/prompt"))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                id: "msg_u1",
+                sessionID: ROOT.id,
+                time: 1,
+                type: "user",
+                payload: { text: "ship it" },
+              },
+            }),
+            { status: 200 },
+          ),
+        );
+      return Promise.resolve(
+        new Response(JSON.stringify({ data: [ROOT], cursor: null }), {
+          status: 400,
+        }),
+      );
+    };
+    const p = createOpenCodeProvider({ service, fetchFn, now: () => 1 });
+    const r = await p.promptSession(ROOT.id, "ship it");
+    expect(r.ok).toBe(true);
+    expect(postBody).toBe(JSON.stringify({ text: "ship it" }));
+    expect(
+      requests.some((x) => x.endsWith(`/api/session/${ROOT.id}/prompt`)),
+    ).toBe(true);
+  });
+
+  it("a 400 → ok:false carrying the service's own reason (the queue keeps the prompt)", async () => {
+    const service = fakeService(BASE);
+    const fetchFn = (url: string): Promise<Response> =>
+      url.includes("/prompt")
+        ? Promise.resolve(
+            new Response(
+              JSON.stringify({
+                _tag: "InvalidRequestError",
+                message: "reason text",
+              }),
+              { status: 400 },
+            ),
+          )
+        : Promise.resolve(new Response("{}", { status: 200 }));
+    const p = createOpenCodeProvider({ service, fetchFn, now: () => 1 });
+    const r = await p.promptSession(ROOT.id, "ship it");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("reason text");
+  });
+
+  it("an unreachable service degrades to ok:false — never a rejection", async () => {
+    const service = fakeService(null);
+    const p = createOpenCodeProvider({
+      service,
+      fetchFn: () => Promise.resolve(new Response("", { status: 200 })),
+      now: () => 1,
+    });
+    const r = await p.promptSession(ROOT.id, "ship it");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.length).toBeGreaterThan(0);
+  });
+});
+
 describe("opencode fork op (tier-1 Run 2 / A3)", () => {
   const FORK_ROW = {
     id: "ses_newfork",

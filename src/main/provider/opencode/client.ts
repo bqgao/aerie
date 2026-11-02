@@ -103,6 +103,10 @@ export interface OpenCodeClient {
   /** `POST /api/session/{id}/fork` with an empty body (verified live contract) — returns the NEW
    *  session row carrying its `fork` provenance. Tier-1 spec Run 2 / A3. */
   forkSession(sessionId: string): Promise<OpencodeSessionRow>;
+  /** `POST /api/session/{id}/prompt` with `{"text": ...}` (verified live contract) — 200 answers
+   *  the user message envelope; errors are typed HTTP failures (400 = invalid request). Tier-1
+   *  spec Run 2 / A4. */
+  promptSession(sessionId: string, text: string): Promise<void>;
 }
 
 /** Typed error so call sites branch on failure KIND, not message text: `connect` (ECONNREFUSED /
@@ -209,12 +213,26 @@ export function createOpenCodeClient(deps: OpenCodeClientDeps): OpenCodeClient {
         err instanceof Error ? err.message : String(err),
       );
     }
-    if (!res.ok)
+    if (!res.ok) {
+      // The service's error body is the display-worthy part ("InvalidRequestError" and its
+      // words ride the result in band); a body that won't parse degrades to the status line.
+      const bodyText = await res.text().catch(() => "");
+      let serverReason = "";
+      try {
+        const parsed = JSON.parse(bodyText) as unknown;
+        const r = asRecord(parsed);
+        if (r && typeof r.message === "string") serverReason = r.message.trim();
+      } catch {
+        // not JSON — no words to carry
+      }
       throw opencodeError(
         "status",
-        `unexpected HTTP ${res.status}`,
+        serverReason
+          ? `unexpected HTTP ${res.status}: ${serverReason}`
+          : `unexpected HTTP ${res.status}`,
         res.status,
       );
+    }
     let parsed: unknown;
     try {
       parsed = await res.json();
@@ -275,6 +293,14 @@ export function createOpenCodeClient(deps: OpenCodeClientDeps): OpenCodeClient {
       const row = asRecord(r.data);
       if (!row) throw opencodeError("response", "fork has no session row", 200);
       return row as unknown as OpencodeSessionRow;
+    },
+    async promptSession(sessionId: string, text: string) {
+      // Verified live: `{"text": ...}` → 200 with the user message envelope; a 400 arrives typed
+      // (status failure) so the provider can degrade in band — the renderer's queue keeps the
+      // prompt and shows the reason instead of throwing.
+      await jsonPost(`/api/session/${encodeURIComponent(sessionId)}/prompt`, {
+        text,
+      });
     },
   };
 }

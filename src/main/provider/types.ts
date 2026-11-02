@@ -115,6 +115,8 @@ export interface Provider {
    *  (opencode — the op is an API call, no pty). Optional: a provider without it answers the
    *  composite's dispatch with the in-band "unsupported" result, never a rejection. */
   forkSession?(id: string): Promise<ProviderOpResult>;
+  /** Tier-1 Run 2 / A4: the prompt arm — `text` delivered to one session's service API. */
+  promptSession?(id: string, text: string): Promise<ProviderOpResult>;
   /** Resolve just a session's working directory, for actions that only need the folder (Open in).
    *  Cheaper than resolveResumeTarget: no liveness probe, and a targeted transcript lookup rather than a
    *  full index. Null when no cwd resolves. */

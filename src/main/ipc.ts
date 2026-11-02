@@ -43,6 +43,11 @@ import type { SqliteDb } from "./db/driver";
 import type { StatusLineReader } from "@shared/statusline";
 import type { ModelDefaults } from "@shared/models";
 import type { CliStatus, CliStatusByAgent } from "@shared/cli-status";
+
+/** The prompt arm's in-band refusal for shapes that never reach the provider: no arm wired, or
+ *  an empty prompt (the renderer's queue never enqueues those — this is the tail guard). */
+const OPENCODE_PROMPT_ARM_UNAVAILABLE =
+  "The prompt could not be delivered to the OpenCode service.";
 import { AGENT_IDS, agentOrDefault, type AgentId } from "@shared/agents";
 import type { CliStatusController } from "./cli-check";
 import type { Updater } from "./updater";
@@ -733,6 +738,36 @@ export function registerIpc({
       } satisfies OpencodeOpResult;
     }
   });
+  // Tier-1 Run 2 / A4: deliver one prompt. Same never-rejects contract — failures carry a
+  // display-grade reason in the result, so the renderer's queue keeps its head and shows why.
+  ipcMain.handle(
+    IPC.opencodePrompt,
+    async (_e, sessionId: string, text: string) => {
+      if (!provider.promptSession)
+        return {
+          ok: false,
+          error: OPENCODE_PROMPT_ARM_UNAVAILABLE,
+        } satisfies OpencodeOpResult;
+      const trimmed = text.trim();
+      if (trimmed === "")
+        return {
+          ok: false,
+          error: OPENCODE_PROMPT_ARM_UNAVAILABLE,
+        } satisfies OpencodeOpResult;
+      try {
+        return (await provider.promptSession(
+          sessionId,
+          trimmed,
+        )) satisfies OpencodeOpResult;
+      } catch {
+        // Same belt-and-braces as the fork arm.
+        return {
+          ok: false,
+          error: OPENCODE_PROMPT_ARM_UNAVAILABLE,
+        } satisfies OpencodeOpResult;
+      }
+    },
+  );
   ipcMain.handle(
     IPC.launchPresetsGet,
     (): LaunchPresets => launchPresets?.read() ?? emptyLaunchPresets(),

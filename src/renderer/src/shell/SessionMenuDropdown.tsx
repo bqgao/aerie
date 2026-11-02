@@ -6,6 +6,8 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { useI18n } from "../i18n";
 import { MENU_WIDTH, type SessionMenuController } from "./use-session-menu";
 import { DiagnosticReportModal } from "./DiagnosticReportModal";
+import { PromptQueueModal } from "./prompt-queue-modal";
+import { AGENTS } from "@shared/agents";
 
 /** The portaled dropdown body shared by every session-menu trigger: seven always-rendered action rows
  *  (only `disabled`/`title` vary — the design's "never hide an action, dim the unavailable ones with a
@@ -43,6 +45,10 @@ export function SessionMenuDropdown({
     forkDisabled,
     forkTitle,
     endTitle,
+    queueOpen,
+    openQueue,
+    closeQueue,
+    canPrompt,
   } = menu;
   const { t } = useI18n();
 
@@ -87,6 +93,21 @@ export function SessionMenuDropdown({
                 icon="pencil"
                 label={t.shell.sessionMenu.rename}
                 onClick={openEdit}
+              />
+              <MenuItem
+                // Tier-1 Run 2 / A4: the prompt queue's only input affordance — prompt-capable
+                // agents get the opener; others see the dimmed item with the standard reason.
+                icon="message-square"
+                label={t.shell.promptQueue.menuLabel}
+                onClick={openQueue}
+                disabled={!canPrompt}
+                title={
+                  canPrompt
+                    ? undefined
+                    : t.shell.sessionMenu.comingSoonForAgent(
+                        AGENTS[session.agent].label,
+                      )
+                }
               />
 
               {resume.error && (
@@ -194,6 +215,7 @@ export function SessionMenuDropdown({
           onClose={closeDiagnostic}
         />
       )}
+      {queueOpen && <PromptQueueModal session={session} onClose={closeQueue} />}
     </>
   );
 }

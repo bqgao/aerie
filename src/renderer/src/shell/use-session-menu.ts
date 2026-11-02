@@ -62,6 +62,11 @@ export interface SessionMenuController {
   forkDisabled: boolean;
   forkTitle: string | undefined;
   endTitle: string;
+  /** Tier-1 Run 2 / A4: the "Queue prompt…" modal open state (a prompt-capable session). */
+  queueOpen: boolean;
+  openQueue: () => void;
+  closeQueue: () => void;
+  canPrompt: boolean;
 }
 
 /** The Resume/Fork/End/Rename/Open-in state machine shared by every trigger that opens a session's
@@ -85,6 +90,7 @@ export function useSessionMenu(
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [diagnosticOpen, setDiagnosticOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   const [draft, setDraft] = useState(session.title);
   const [openInBusy, setOpenInBusy] = useState(false);
   const [openInError, setOpenInError] = useState<string | null>(null);
@@ -213,6 +219,11 @@ export function useSessionMenu(
       rootRef.current?.querySelector<HTMLElement>("button") ?? null;
     setOpen(false);
     setDiagnosticOpen(true);
+  }
+  // Tier-1 Run 2 / A4: the same trigger-anchored pattern — the menu closes, the modal opens.
+  function openQueue(): void {
+    setOpen(false);
+    setQueueOpen(true);
   }
   useEffect(() => {
     if (diagnosticOpen) return;
@@ -346,5 +357,9 @@ export function useSessionMenu(
     forkDisabled,
     forkTitle,
     endTitle,
+    queueOpen,
+    openQueue,
+    closeQueue: () => setQueueOpen(false),
+    canPrompt: caps.canPrompt,
   };
 }

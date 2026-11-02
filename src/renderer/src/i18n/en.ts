@@ -312,6 +312,20 @@ export const en = {
       reasonIdle: "Idle",
       reasonPermission: (tool: string) => `Permission: ${tool}`,
     },
+    // Tier-1 Run 2 / A4: the per-session prompt queue's copy.
+    promptQueue: {
+      menuLabel: "Queue prompt…",
+      clearQueue: "Clear queued prompts",
+      modalTitle: "Queue prompt",
+      placeholder: "Type a prompt to queue…",
+      inputLabel: "Prompt to queue",
+      modalHint: "Enter to queue · Shift+Enter for a new line",
+      modalEmpty: "No queued prompts.",
+      queuedPrompts: (count: number) =>
+        count === 1 ? "1 queued prompt" : `${count} queued prompts`,
+      // The in-band fallback when the arm itself couldn't produce a reason (never a rejection).
+      sendFailed: "The prompt could not be delivered.",
+    },
     sessionRow: {
       openSession: (title: string) => `Open ${title}`,
       // Pass R: the remote-row server badge tooltip — name first, host after the dot.

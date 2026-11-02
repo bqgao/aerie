@@ -35,6 +35,9 @@ export interface AgentCapabilities {
   hasStats: boolean;
   /** The Stats page can show project and session breakdown cards for this agent. */
   hasStatsBreakdowns: boolean;
+  /** The rail can enqueue prompts into this agent's sessions (an in-band prompt API op —
+   *  tier-1 spec Run 2 / A4). */
+  canPrompt: boolean;
 }
 
 export interface AgentDescriptor {
@@ -58,6 +61,8 @@ const ALL = {
   hasModelPicker: true,
   hasStats: true,
   hasStatsBreakdowns: true,
+  // No CLI agent ships an in-band prompt API op; the service-API agent declares it.
+  canPrompt: false,
 } as const satisfies AgentCapabilities;
 
 const NONE = {
@@ -72,6 +77,7 @@ const NONE = {
   hasModelPicker: false,
   hasStats: false,
   hasStatsBreakdowns: false,
+  canPrompt: false,
 } as const satisfies AgentCapabilities;
 
 export const AGENTS: Record<AgentId, AgentDescriptor> = {
@@ -114,6 +120,8 @@ export const AGENTS: Record<AgentId, AgentDescriptor> = {
       canResume: true,
       canFork: true,
       hasStats: true,
+      // Tier-1 Run 2 / A4: the v2 service's POST /session/:id/prompt op.
+      canPrompt: true,
     },
   },
 };

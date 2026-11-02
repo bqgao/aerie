@@ -27,6 +27,7 @@ import { speedFromMessages, usageFromRow, ZERO_USAGE } from "./usage";
 import {
   createOpenCodeClient,
   OPENCODE_MESSAGE_CAP,
+  opencodeError,
   type OpenCodeClient,
   type OpencodeMessageRow,
   type OpencodeSessionRow,
@@ -62,6 +63,28 @@ export const OPENCODE_WAITING_REASON = "Turn complete";
  *  or a non-2xx). Renderer renders it verbatim — handlers never reject (tier-1 cross-cutting). */
 export const OPENCODE_FORK_UNAVAILABLE =
   "The OpenCode service did not complete the fork.";
+
+/** Same contract, prompt arm (tier-1 Run 2 / A4): a connect-shaped failure (no service, no
+ *  source, unreachable) reads as this; an HTTP-level failure's own reason rides verbatim. */
+export const OPENCODE_PROMPT_UNAVAILABLE =
+  "The OpenCode service could not be reached to deliver the prompt.";
+
+/** The prompt arm's display reason from a typed client failure: the status/response envelope
+ *  carries the service's own words (e.g. `_tag: "InvalidRequestError"`) — pass a trimmed text
+ *  through; a connect error collapses to the generic refusal. */
+export function promptErrorText(err: unknown): string {
+  const apiErr = err as { kind?: string; message?: string } | null;
+  if (
+    apiErr &&
+    typeof apiErr === "object" &&
+    typeof apiErr.message === "string" &&
+    apiErr.kind !== "connect"
+  ) {
+    const text = apiErr.message.replace(/^opencode api [a-z]+: /, "").trim();
+    if (text !== "") return text;
+  }
+  return OPENCODE_PROMPT_UNAVAILABLE;
+}
 
 /**
  * The optimistic Managed-style draft the fork ipc returns the renderer, built exactly like the
@@ -152,6 +175,8 @@ export interface OpenCodeProvider extends Provider {
   overlaySessions(sessions: Session[]): Session[];
   /** Tier-1 Run 2 / A3: the fork service-op (local + remote-namepaced sources). */
   forkSession: OpenCodeForkSessionArm;
+  /** Tier-1 Run 2 / A4: the prompt deliver op (same source routing as the fork arm). */
+  promptSession: (sessionId: string, text: string) => Promise<OpenCodeOpResult>;
 }
 
 /** Tier-1 Run 2 / A3 + A4: the two service-op arms riding the same client — fail in band
@@ -537,6 +562,58 @@ export function createOpenCodeProvider(
     return { ok: true, session: opencodeForkDraft(row) };
   };
 
+  /** Tier-1 Run 2 / A4: deliver one prompt to a session — the same per-id source routing as the
+   *  fork arm (namespaced remote ids ride their own swept source). The typed client failure is
+   *  turned into a display-grade reason; a service probe failure reads as the generic refusal,
+   *  an HTTP 400's reason text rides verbatim. */
+  /** The prompt arm's local-path delivery, mirroring withClientRetry's re-discovery contract but
+   *  RETHROWING the typed failure (the caller turns it into the in-band reason — a 400's status
+   *  failure carries the server's own words, which the generic null-collapse would erase). */
+  const sendPromptWithReDiscovery = async (
+    sessionId: string,
+    text: string,
+  ): Promise<{ ok: true }> => {
+    const endpoint = await deps.service.resolve();
+    if (!endpoint) throw opencodeError("connect", "the service is not running");
+    try {
+      await clientFor(endpoint).promptSession(sessionId, text);
+      return { ok: true };
+    } catch (err) {
+      deps.service.invalidate();
+      const retryEndpoint = await deps.service.resolve();
+      if (!retryEndpoint) throw err;
+      await clientFor(retryEndpoint).promptSession(sessionId, text);
+      return { ok: true };
+    }
+  };
+
+  const promptSession = async (
+    sessionId: string,
+    text: string,
+  ): Promise<OpenCodeOpResult> => {
+    // Same per-id source routing as the fork arm; the typed client failure becomes a
+    // display-grade reason (a connect failure reads as the generic refusal, an HTTP 400's
+    // server reason rides the result verbatim). Never rejects.
+    try {
+      const ns = parseNamespacedId(sessionId);
+      if (ns) {
+        const source = remoteState.get(ns.serverId);
+        if (!source) return { ok: false, error: OPENCODE_PROMPT_UNAVAILABLE };
+        const client = createOpenCodeClient({
+          baseUrl: source.baseUrl,
+          password: source.password,
+          fetchFn: deps.fetchFn,
+        });
+        await client.promptSession(ns.raw, text);
+        return { ok: true };
+      }
+      const sent = await sendPromptWithReDiscovery(sessionId, text);
+      return sent;
+    } catch (err) {
+      return { ok: false, error: promptErrorText(err) };
+    }
+  };
+
   const modelRawFor = rowModelRaw;
 
   const summarizeRow = async (
@@ -766,7 +843,9 @@ export function createOpenCodeProvider(
           return s;
         return { ...s, costUsd: cost };
       }),
-    // Tier-1 Run 2 / A3: the fork service-op over the local service or its own remote source.
+    // Tier-1 Run 2 / A3 + A4: the fork and prompt service-ops over the local service or the
+    // id's own remote source.
     forkSession,
+    promptSession,
   };
 }

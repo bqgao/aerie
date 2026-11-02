@@ -50,6 +50,15 @@ export function createCompositeProvider(
             error: `${p.id} does not support forking sessions.`,
           });
     },
+    promptSession: (id, text) => {
+      const p = by(id);
+      return p.promptSession
+        ? p.promptSession(id, text)
+        : Promise.resolve({
+            ok: false as const,
+            error: `${p.id} does not support queueing prompts.`,
+          });
+    },
     resolveResumeTarget: (id) => by(id).resolveResumeTarget(id),
     resolveSessionCwd: (id) => by(id).resolveSessionCwd(id),
     resolveTranscriptPath: (id) => by(id).resolveTranscriptPath(id),

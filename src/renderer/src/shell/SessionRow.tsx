@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSessionMenu } from "./use-session-menu";
 import { SessionMenuDropdown } from "./SessionMenuDropdown";
 import { SessionReasonChip } from "./session-reason-chip";
+import { QueueBadge } from "./queue-badge";
 /** Pass R: server names for remote session badges, fetched ONCE per renderer session (the rail's
  *  rows all share the module cache). serverId → { name, host }; a failed read still yields an
  *  empty map, and the badge falls back to the bare id — a rail render must never reject. */
@@ -54,6 +55,7 @@ export function SessionRow({
   showReasonChip = false,
   onPreviewEnter,
   onPreviewLeave,
+  queued,
 }: {
   session: Session;
   selected: boolean;
@@ -80,6 +82,9 @@ export function SessionRow({
     event: { pointerType: string; buttons: number },
   ) => void;
   onPreviewLeave?: () => void;
+  /** Tier-1 Run 2 / A4: this session's prompt queue — parked count, plus the failed head's
+   *  in-band error (drives the warning color and the row's error line). */
+  queued?: { count: number; error: string | null };
 }) {
   const { t } = useI18n();
   // Pass R: the server badge for remote opencode sessions — the id's namespace is the server key;
@@ -206,6 +211,9 @@ export function SessionRow({
           {session.title}
         </span>
         {showReasonChip && <SessionReasonChip session={session} />}
+        {queued != null && (queued.count > 0 || queued.error) && (
+          <QueueBadge count={queued.count} error={queued.error} />
+        )}
         {hasChildren && (
           <span
             className={cx(

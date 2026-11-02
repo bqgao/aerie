@@ -11,6 +11,7 @@ import { useSessionMenu } from "./use-session-menu";
 import { SessionMenuDropdown } from "./SessionMenuDropdown";
 import { useEffect, useRef } from "react";
 import { SessionReasonChip } from "./session-reason-chip";
+import { QueueBadge } from "./queue-badge";
 
 /**
  * The PINNED section's enriched two-line row (2026-07-17 pinned-sessions spec, style B): lamp +
@@ -38,6 +39,7 @@ export function PinnedSessionRow({
   showReasonChip = false,
   onPreviewEnter,
   onPreviewLeave,
+  queued,
 }: {
   session: Session;
   selected: boolean;
@@ -58,6 +60,8 @@ export function PinnedSessionRow({
     event: { pointerType: string; buttons: number },
   ) => void;
   onPreviewLeave?: () => void;
+  /** Tier-1 Run 2 / A4: this session's prompt queue — parked count + the failed head's error. */
+  queued?: { count: number; error: string | null };
 }) {
   const { t } = useI18n();
   const menu = useSessionMenu(session, canSpawn, {
@@ -192,6 +196,13 @@ export function PinnedSessionRow({
             </span>
           )}
           <span className="min-w-0 truncate">{repo}</span>
+          {queued != null && (queued.count > 0 || queued.error) && (
+            <QueueBadge
+              count={queued.count}
+              error={queued.error}
+              className="ml-auto"
+            />
+          )}{" "}
           {branch && (
             <>
               <Icon
