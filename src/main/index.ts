@@ -17,6 +17,12 @@ import { createSftpService } from "./servers/sftp-service";
 import { registerSftpIpc } from "./servers/sftp-ipc";
 import { registerFileIoIpc } from "./fileio/fileio-ipc";
 import { createFileIoService } from "./fileio/fileio-service";
+import {
+  createPdfTempRemote,
+  createPdfTempService,
+  type PdfTempService,
+} from "./fileio/pdftemp-service";
+import { registerPdfTempIpc } from "./fileio/pdftemp-ipc";
 import type { SftpService } from "./servers/sftp-service";
 import { isHttpUrl } from "./open-external";
 import { join } from "node:path";
@@ -123,6 +129,8 @@ function createWindow(
   sshTerminalDown?: { noteDown: (serverId: string) => void },
   /** F: the app-level SFTP session service (transfers + ops) for the file-manager pane. */
   sftpService?: SftpService,
+  /** I-b: the app-level server-PDF temp-cache service (the PDF tab's remote pull). */
+  pdfTempService?: PdfTempService,
   /** F: a holder the pool's onDown composition calls into — filled when the sftp IPC registers
    *  below (same pattern as sshTerminalDown). */
   sftpDown?: { noteDown: (serverId: string) => void },
@@ -154,6 +162,9 @@ function createWindow(
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
+      // I-b: the PDF tab's viewer is a <webview> guest (Chromium's own pdfium UI) — the tag
+      // must be opted in at the window level; the guests themselves stay fully sandboxed.
+      webviewTag: true,
     },
   });
   if (isMac) win.setSheetOffset(HEADER_HEIGHT_PX);
@@ -234,6 +245,12 @@ function createWindow(
     window: win,
     service: createFileIoService({ dataDirs: () => [app.getPath("userData")] }),
   });
+
+  // The PDF tab's remote half: I-b's server-pdf temp pull over the pool. No pool (harnesses)
+  // → the channel never registers and a server PDF refuses in-band in the renderer.
+  if (connectionManager && pdfTempService) {
+    registerPdfTempIpc({ window: win, service: pdfTempService });
+  }
 
   win.on("closed", () => registerRename(() => {}));
 
@@ -354,6 +371,16 @@ app
     // F: the file manager's SFTP session service (app-level: transfers outlive window toggles,
     // die with the pool on drop, and die with the app on quit through its own before-quit).
     const sftpService = createSftpService({ connectionManager });
+    // I-b: the editor's server-PDF temp cache (app-level like the SFTP service): downloads
+    // ride pooled connections, the copy dir is swept on quit (registered immediately — a
+    // missed sweep from a crashed run is reclaimed by this same sweep at the next launch).
+    const pdfTempService = createPdfTempService({
+      dir: () => join(app.getPath("userData"), "cache", "pdf"),
+      remote: createPdfTempRemote(connectionManager, (message) =>
+        logWarn("pdftemp-remote-fault", "the pdf temp pull hit a channel-level error", message),
+      ),
+    });
+    app.on("will-quit", () => void pdfTempService.sweep());
     const sftpDownHolder: { noteDown: (serverId: string) => void } = {
       noteDown: (id) => sftpService.noteDown(id),
     };
@@ -400,6 +427,7 @@ app
         connectionManager,
         sshTerminalDown,
         sftpService,
+        pdfTempService,
         sftpDownHolder,
       );
     openWindow();

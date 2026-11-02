@@ -26,6 +26,7 @@ import type { ShellTerminalApi } from "./shell-terminal";
 import type { SshTerminalApi } from "./ssh-terminal";
 import type { SftpApi } from "./sftp";
 import type { FileIoApi } from "./fileio";
+import type { PdfTempApi } from "./pdftemp";
 import type { MetricsRead } from "./metrics";
 import type { ModelDefaults } from "./models";
 import type { StatsSnapshot, StatsRange, ScanProgress } from "./stats";
@@ -52,6 +53,7 @@ import type {
 } from "./diagnostic-report";
 export { type UpdateState };
 export { type FileIoApi } from "./fileio";
+export { type PdfTempApi } from "./pdftemp";
 export const IPC = {
   overview: "overview:get",
   refresh: "sessions:refresh",
@@ -415,6 +417,9 @@ export type AppApi = IpcApi & {
   /** The editor's local-disk surface (I-a): capped UTF-8 read, atomic UTF-8 write, and the
    *  native open-file picker. Path rules live main-side (absolute-only, app data refused). */
   fileio: FileIoApi;
+  /** The PDF tab's server half (I-b): main pulls a server PDF into userData/cache/pdf and
+   *  answers a `file://` URL for the webview src (content-hash-named copy, 20MiB cap). */
+  pdfTemp: PdfTempApi;
   /** Electron webUtils.getPathForFile: the absolute filesystem path of a DOM File dragged from the
    *  OS, for dropping paths into the terminal. Typed loosely (`object`) so this shared type stays
    *  DOM-lib-free under tsconfig.node.json; renderer call sites pass a real File. */

@@ -15,6 +15,7 @@ import { SHELL_TERMINAL } from "@shared/shell-terminal";
 import { SSH_TERMINAL } from "@shared/ssh-terminal";
 import { SFTP } from "@shared/sftp";
 import { FILEIO } from "@shared/fileio";
+import { PDFTEMP } from "@shared/pdftemp";
 
 const api: AppApi = {
   overview: () => ipcRenderer.invoke(IPC.overview),
@@ -252,6 +253,10 @@ const api: AppApi = {
     read: (path) => ipcRenderer.invoke(FILEIO.read, path),
     write: (path, content) => ipcRenderer.invoke(FILEIO.write, path, content),
     pick: () => ipcRenderer.invoke(FILEIO.pick),
+  },
+  pdfTemp: {
+    openPdfServer: (serverId, path) =>
+      ipcRenderer.invoke(PDFTEMP.open, serverId, path),
   },
   getPathForFile: (file) => webUtils.getPathForFile(file as File),
 };
