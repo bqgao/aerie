@@ -11,6 +11,11 @@ export type ProjectState = Record<
   string,
   { pinnedAtMs?: number; hiddenAtMs?: number }
 >;
+
+/** The app chrome's theme SETTING (the persisted user choice). "system" follows the OS; the
+ *  renderer resolves it to a concrete "dark" | "light" for the DOM (data-theme), and the main
+ *  process feeds it straight to Electron's nativeTheme.themeSource, which accepts all three. */
+export type AppThemeSetting = "dark" | "light" | "system";
 import type {
   TranscriptRead,
   ReadSettled,
@@ -333,11 +338,11 @@ export interface IpcApi {
   getAutoCheckUpdates(): Promise<boolean>;
   /** Persist the launch-check preference. */
   setAutoCheckUpdates(enabled: boolean): Promise<void>;
-  /** The app chrome's theme (missing preference reads as "dark"). */
-  getAppTheme(): Promise<"dark" | "light">;
-  /** Persist the app theme and sync Electron's nativeTheme (the native macOS traffic-light
-   *  buttons — this app uses titleBarStyle "hidden" with them visible). */
-  setAppTheme(theme: "dark" | "light"): Promise<void>;
+  /** The app chrome's theme SETTING — "system" follows the OS (missing preference reads as "dark"). */
+  getAppTheme(): Promise<AppThemeSetting>;
+  /** Persist the app theme setting and sync Electron's nativeTheme (the native macOS traffic-light
+   *  buttons — this app uses titleBarStyle "hidden" with them visible; "system" defers to the OS). */
+  setAppTheme(theme: AppThemeSetting): Promise<void>;
   /** The terminal panels' theme (interactive shell rail + observed session terminal), independent
    *  of the app theme (missing preference reads as "dark"). */
   getTerminalTheme(): Promise<"dark" | "light">;

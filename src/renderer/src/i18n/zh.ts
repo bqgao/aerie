@@ -32,6 +32,7 @@ export const zh: Translations = {
       terminalThemeDesc: "交互式终端与会话观察终端",
       dark: "深色",
       light: "浅色",
+      system: "跟随系统",
     },
     system: {
       title: "系统",

@@ -48,6 +48,7 @@ export const en = {
         "The interactive shell and the observed session terminal",
       dark: "Dark",
       light: "Light",
+      system: "System",
     },
     system: {
       title: "System",

@@ -83,7 +83,7 @@ import {
   shouldCorrectPath,
 } from "./terminal/shell-path";
 import { HEADER_HEIGHT_PX, MAC_TRAFFIC_LIGHT_POSITION } from "@shared/chrome";
-import { IPC } from "@shared/ipc";
+import { IPC, type AppThemeSetting } from "@shared/ipc";
 import { logError, logWarn } from "./log-buffer";
 
 // Pin the whole app to the sRGB color profile. Without this, the packaged build inherits the
@@ -108,7 +108,7 @@ function createWindow(
   launchArgs: LaunchArgsStore,
   registerRename: (rename: (from: string, to: string) => void) => void,
   shellEnv: () => NodeJS.ProcessEnv,
-  appTheme: "dark" | "light",
+  appTheme: AppThemeSetting,
   /** Pass R: the on-demand remote transport resolver for managed remote opencode spawns/resumes
    *  (may dial the tunnel). Optional — test/dev harnesses omit it and remote spawns refuse. */
   remoteSpawn?: (
@@ -135,7 +135,16 @@ function createWindow(
   const win = new BrowserWindow({
     width: 1100,
     height: 720,
-    backgroundColor: WINDOW_BACKGROUND[appTheme],
+    // "system" resolves at creation time via nativeTheme (the OS's current choice); the
+    // background is only the pre-paint color, so a later OS flip isn't chased here.
+    backgroundColor:
+      WINDOW_BACKGROUND[
+        appTheme === "system"
+          ? nativeTheme.shouldUseDarkColors
+            ? "dark"
+            : "light"
+          : appTheme
+      ],
     ...(isMac
       ? {
           titleBarStyle: "hidden" as const,

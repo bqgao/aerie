@@ -112,6 +112,13 @@ describe("terminalTheme preference", () => {
     return d;
   }
 
+  it("persists a system choice verbatim", () => {
+    const dir = tmp();
+    const store = createAppSettingsStore({ dir });
+    store.setAppTheme("system");
+    expect(store.read().appTheme).toBe("system");
+  });
+
   it("is independent of appTheme and persists separately", () => {
     const dir = tmp();
     const store = createAppSettingsStore({ dir });

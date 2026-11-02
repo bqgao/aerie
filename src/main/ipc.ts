@@ -17,6 +17,7 @@ import {
   type OpenInTarget,
   type UpdateState,
   type DbInfo,
+  type AppThemeSetting,
 } from "@shared/ipc";
 import type {
   OpencodeHealth,
@@ -909,12 +910,13 @@ export function registerIpc({
   );
   ipcMain.handle(
     IPC.appearanceGetAppTheme,
-    (): "dark" | "light" => settings.read().appTheme ?? "dark",
+    (): AppThemeSetting => settings.read().appTheme ?? "dark",
   );
   ipcMain.handle(
     IPC.appearanceSetAppTheme,
-    (_e, theme: "dark" | "light"): void => {
+    (_e, theme: AppThemeSetting): void => {
       settings.setAppTheme(theme);
+      // nativeTheme.themeSource accepts "system" natively — the OS decides from there.
       nativeTheme.themeSource = theme;
     },
   );

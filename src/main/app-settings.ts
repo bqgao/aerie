@@ -13,7 +13,7 @@ export interface AppSettings {
   statuslineEnabled?: boolean;
   /** The app chrome's theme (panels, sidebar, settings, markdown code blocks). Missing means dark;
    *  callers read `read().appTheme ?? "dark"`. */
-  appTheme?: "dark" | "light";
+  appTheme?: "dark" | "light" | "system";
   /** The terminal panels' theme (interactive shell rail + observed session terminal), independent
    *  of appTheme. Missing means dark; callers read `read().terminalTheme ?? "dark"`. */
   terminalTheme?: "dark" | "light";
@@ -27,7 +27,7 @@ export interface AppSettingsStore {
   read(): AppSettings;
   setAutoCheckUpdates(enabled: boolean): void;
   setStatuslineEnabled(enabled: boolean): void;
-  setAppTheme(theme: "dark" | "light"): void;
+  setAppTheme(theme: "dark" | "light" | "system"): void;
   setTerminalTheme(theme: "dark" | "light"): void;
   setAppLocale(locale: Locale): void;
 }

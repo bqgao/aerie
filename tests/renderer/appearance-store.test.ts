@@ -1,18 +1,44 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   $appTheme,
+  $appThemeSetting,
   $terminalTheme,
+  applyAppThemeSetting,
+  resolveAppThemeSetting,
 } from "../../src/renderer/src/ui/appearance-store";
 
 describe("appearance-store", () => {
   beforeEach(() => {
     // Reset to the module's own default between tests — the DOM-side-effect subscription is global.
     $appTheme.set("dark");
+    $appThemeSetting.set("dark");
     $terminalTheme.set("dark");
   });
 
   it("$appTheme defaults to dark", () => {
     expect($appTheme.get()).toBe("dark");
+  });
+
+  it("resolveAppThemeSetting passes concrete themes through and maps system onto the OS preference", () => {
+    expect(resolveAppThemeSetting("dark", true)).toBe("dark");
+    expect(resolveAppThemeSetting("dark", false)).toBe("dark");
+    expect(resolveAppThemeSetting("light", true)).toBe("light");
+    expect(resolveAppThemeSetting("light", false)).toBe("light");
+    expect(resolveAppThemeSetting("system", true)).toBe("dark");
+    expect(resolveAppThemeSetting("system", false)).toBe("light");
+  });
+
+  it("applyAppThemeSetting records the choice and resolves it into $appTheme", () => {
+    // jsdom's matchMedia reports matches=false — "system" therefore resolves light here.
+    applyAppThemeSetting("system");
+    expect($appThemeSetting.get()).toBe("system");
+    expect($appTheme.get()).toBe("light");
+    expect(document.documentElement.dataset.theme).toBe("light");
+
+    applyAppThemeSetting("dark");
+    expect($appThemeSetting.get()).toBe("dark");
+    expect($appTheme.get()).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
   it("$terminalTheme is independent of $appTheme", () => {
