@@ -137,44 +137,45 @@ const remoteRows = [
 
 function makeProvider(sources: Array<{ serverId: string; baseUrl: string }>) {
   const requests: string[] = [];
+  // A sync responder lifted to the fetch seam's Promise type — an await-free async
+  // trips require-await. Its throws stay sync: every caller site sits inside try/catch.
+  const respond = (url: string): Response => {
+    requests.push(url);
+    const source = sources.find((s) => url.startsWith(s.baseUrl));
+    if (!source || source.serverId === "srv-B") throw new Error("ECONNREFUSED"); // unreachable source leg
+    if (url.includes("/api/session/active"))
+      return new Response(JSON.stringify({ data: {} }), { status: 200 });
+    if (url.includes("/api/session?"))
+      return new Response(JSON.stringify({ data: remoteRows, cursor: null }), {
+        status: 200,
+      });
+    if (url.includes("/message"))
+      return new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: "msg_1",
+              type: "user",
+              time: { created: 500 },
+              content: [{ type: "text", text: "remote prompt" }],
+            },
+            {
+              id: "msg_2",
+              type: "assistant",
+              time: { created: 600, completed: 700 },
+              content: [{ type: "text", text: "remote answer" }],
+            },
+          ],
+          cursor: null,
+        }),
+        { status: 200 },
+      );
+    return new Response("{}", { status: 200 });
+  };
   const p = createOpenCodeProvider({
     // Local service inert (null endpoint) — only the remote arms speak.
     service: { resolve: () => null, invalidate: () => {} } as never,
-    fetchFn: async (url: string) => {
-      requests.push(url);
-      const source = sources.find((s) => url.startsWith(s.baseUrl));
-      if (!source || source.serverId === "srv-B")
-        throw new Error("ECONNREFUSED"); // unreachable source leg
-      if (url.includes("/api/session/active"))
-        return new Response(JSON.stringify({ data: {} }), { status: 200 });
-      if (url.includes("/api/session?"))
-        return new Response(
-          JSON.stringify({ data: remoteRows, cursor: null }),
-          { status: 200 },
-        );
-      if (url.includes("/message"))
-        return new Response(
-          JSON.stringify({
-            data: [
-              {
-                id: "msg_1",
-                type: "user",
-                time: { created: 500 },
-                content: [{ type: "text", text: "remote prompt" }],
-              },
-              {
-                id: "msg_2",
-                type: "assistant",
-                time: { created: 600, completed: 700 },
-                content: [{ type: "text", text: "remote answer" }],
-              },
-            ],
-            cursor: null,
-          }),
-          { status: 200 },
-        );
-      return new Response("{}", { status: 200 });
-    },
+    fetchFn: (url: string): Promise<Response> => Promise.resolve(respond(url)),
     now: () => 1_500,
     remote: {
       homeDir: "/home/deploy",

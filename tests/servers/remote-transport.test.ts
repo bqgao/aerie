@@ -10,13 +10,15 @@ import type { ServerProfile } from "../../src/shared/servers";
 
 /** A loopback echo SYNTH server (the fake "opencode serve" on 127.0.0.1:servePort): echoes every
  *  byte back up the tunnel, so the resolve-and-pipe path is exercised for real against net. */
-function startEcho(servePort: number): net.Server {
+/** Binds an ephemeral loopback port — a fixed port races whatever else holds it on the
+ * machine — and resolves once listening. */
+async function startEcho(): Promise<{ server: net.Server; port: number }> {
   const server = net.createServer((s) => s.pipe(s));
-  server.listen(servePort, "127.0.0.1");
-  return server;
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  return { server, port: (server.address() as net.AddressInfo).port };
 }
 
-const profile = (): ServerProfile => ({
+const profile = (servePort: number): ServerProfile => ({
   id: "srv-1",
   name: "web-1",
   group: "prod",
@@ -25,7 +27,7 @@ const profile = (): ServerProfile => ({
   username: "deploy",
   authMode: "password",
   createdAtMs: 0,
-  opencode: { servePort: 49374, autoTunnel: true },
+  opencode: { servePort, autoTunnel: true },
 });
 
 /** A one-real-connection manager: its withClient hands out an Rpc whose forwardOut really
@@ -52,9 +54,9 @@ function fakeManager() {
   return { manager, configs, connect };
 }
 
-function make(overrides: Partial<RemoteTransportDeps> = {}) {
+function make(overrides: Partial<RemoteTransportDeps> = {}, servePort = 0) {
   const profiles = new Map<string, ServerProfile>([
-    ["srv-1", { ...profile() }],
+    ["srv-1", { ...profile(servePort) }],
   ]);
   const clock = { cur: 1_000 };
   const fetchCounts: string[] = [];
@@ -78,10 +80,10 @@ describe("createRemoteTransport", () => {
   afterEach(() => {});
 
   it("ensure() dials the SSH leg, mints one loopback listener, and reuses it", async () => {
-    const echo = startEcho(49374);
+    const echo = await startEcho();
     try {
       const { manager } = fakeManager();
-      const { deps } = make({ manager });
+      const { deps } = make({ manager }, echo.port);
       const t = createRemoteTransport(deps);
       const a = await t.ensure("srv-1");
       expect(a.ok).toBe(true);
@@ -95,7 +97,7 @@ describe("createRemoteTransport", () => {
       );
       t.teardown("srv-1");
     } finally {
-      echo.close();
+      echo.server.close();
     }
   });
 
@@ -104,12 +106,13 @@ describe("createRemoteTransport", () => {
     const serve = net.createServer((s) => {
       s.end("SERVE-REPLIED");
     });
-    await new Promise<void>((r) => serve.listen(49375, "127.0.0.1", r));
+    await new Promise<void>((r) => serve.listen(0, "127.0.0.1", r));
+    const servePort = (serve.address() as net.AddressInfo).port;
     try {
       const { manager } = fakeManager();
       const p = {
-        ...profile(),
-        opencode: { servePort: 49375, autoTunnel: true },
+        ...profile(servePort),
+        opencode: { servePort, autoTunnel: true },
       };
       const profiles = new Map([["srv-1", p]]);
       const deps = {
@@ -130,7 +133,7 @@ describe("createRemoteTransport", () => {
 
   it("directUrl profiles skip the tunnel entirely", async () => {
     const p = {
-      ...profile(),
+      ...profile(0),
       opencode: {
         servePort: 4096,
         directUrl: "http://tailnet:4096/",
@@ -159,9 +162,11 @@ describe("createRemoteTransport", () => {
     const { manager } = fakeManager();
     let clock = 1_000;
     const probes: string[] = [];
+    const serve = await startEcho();
     const deps = {
       manager,
-      profileOf: (id: string) => (id === "srv-1" ? profile() : undefined),
+      profileOf: (id: string) =>
+        id === "srv-1" ? profile(serve.port) : undefined,
       opencodePasswordOf: () => "pw",
       fetchFn: (url: string) => {
         probes.push(url);
@@ -170,7 +175,6 @@ describe("createRemoteTransport", () => {
       now: () => clock,
     };
     const t = createRemoteTransport(deps);
-    const serve = startEcho(49374);
     try {
       await t.health("srv-1");
       await t.health("srv-1"); // same window → no new probe
@@ -182,16 +186,20 @@ describe("createRemoteTransport", () => {
       await t.health("srv-1"); // invalidated → re-probe even in-window
       expect(probes).toHaveLength(3);
     } finally {
-      serve.close();
+      serve.server.close();
     }
   });
 
   it("a stop-probe profile (no opencode section) answers null health and refuses ensure", async () => {
     const profiles = new Map<string, ServerProfile>([
-      ["srv-n", { ...profile(), opencode: undefined }],
+      ["srv-n", { ...profile(0), opencode: undefined }],
     ]);
     profiles.delete("srv-n");
-    profiles.set("srv-n", { ...profile(), id: "srv-n", opencode: undefined });
+    profiles.set("srv-n", {
+      ...profile(0),
+      id: "srv-n",
+      opencode: undefined,
+    });
     const { manager } = fakeManager();
     const t = createRemoteTransport({
       manager,
@@ -209,21 +217,21 @@ describe("createRemoteTransport", () => {
 
   it("a 401 serve reads down with the password hint (never the credential)", async () => {
     const { manager } = fakeManager();
+    const serve = await startEcho();
     const t = createRemoteTransport({
       manager,
-      profileOf: () => profile(),
+      profileOf: () => profile(serve.port),
       opencodePasswordOf: () => "hunter2-secret",
       fetchFn: () => Promise.resolve(new Response("no", { status: 401 })),
       now: () => 1_000,
     });
-    const serve = startEcho(49374);
     try {
       const h = await t.health("srv-1");
       expect(h?.state).toBe("down");
       expect(h?.detail).toContain("password");
       expect(JSON.stringify(h)).not.toContain("hunter2-secret");
     } finally {
-      serve.close();
+      serve.server.close();
     }
   });
 });
