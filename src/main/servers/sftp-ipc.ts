@@ -20,7 +20,7 @@ import {
   BrowserWindow,
 } from "electron";
 import { SFTP, type SftpTransferSnapshot } from "@shared/sftp";
-import { remoteBasename } from "./sftp-paths";
+import { remoteBasename } from "@shared/sftp-paths";
 import type { SftpService } from "./sftp-service";
 
 /** The never-hallucinate path: a string array from an unknown sender becomes only its string
@@ -81,6 +81,14 @@ export function registerSftpIpc({
       return Promise.resolve({ ok: false, error: "Invalid request." });
     }
     return service.mkdir(serverId, rawPath);
+  });
+
+  ipcMain.handle(SFTP.createFile, (_e, rawServerId: unknown, rawPath: unknown) => {
+    const serverId = requireServer(rawServerId);
+    if (!serverId || typeof rawPath !== "string") {
+      return Promise.resolve({ ok: false, error: "Invalid request." });
+    }
+    return service.createFile(serverId, rawPath);
   });
 
   ipcMain.handle(
@@ -162,13 +170,18 @@ export function registerSftpIpc({
         }
         localPaths = open.filePaths;
       }
-      const opts = { overwrite: rawOpts === true || (rawOpts as { overwrite?: unknown } | null | undefined)?.overwrite === true };
-      return service.upload(
-        serverId,
-        rawDir,
-        localPaths,
-        opts.overwrite ? opts : undefined,
-      );
+  const opts =
+    rawOpts !== null && typeof rawOpts === "object"
+      ? (rawOpts as { overwrite?: unknown; renameAs?: Record<string, string> })
+      : undefined;
+  const normalized =
+    opts && (opts.overwrite === true || opts.renameAs)
+      ? {
+          overwrite: opts.overwrite === true,
+          ...(opts.renameAs ? { renameAs: opts.renameAs } : {}),
+        }
+      : undefined;
+  return service.upload(serverId, rawDir, localPaths, normalized);
     },
   );
 
@@ -220,6 +233,7 @@ export function registerSftpIpc({
       SFTP.stat,
       SFTP.home,
       SFTP.mkdir,
+      SFTP.createFile,
       SFTP.rename,
       SFTP.deleteFn,
       SFTP.download,

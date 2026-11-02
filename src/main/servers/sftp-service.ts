@@ -28,7 +28,7 @@ import {
   joinRemote,
   normalizeRemotePath,
   remoteBasename,
-} from "./sftp-paths";
+} from "@shared/sftp-paths";
 import type {
   SftpDeleteResult,
   SftpEntry,
@@ -214,6 +214,8 @@ export interface SftpService {
   stat(serverId: string, path: string): Promise<SftpStatResult>;
   home(serverId: string): Promise<{ ok: true; path: string } | SftpFailure>;
   mkdir(serverId: string, path: string): Promise<SftpOk>;
+  /** Create an empty remote file (the pane's New File…, riding the SFTP "w" open+close). */
+  createFile(serverId: string, path: string): Promise<SftpOk>;
   rename(serverId: string, from: string, to: string): Promise<SftpOk>;
   /** Directories delete recursively with per-child errors COLLECTED into `warnings`. */
   delete(serverId: string, paths: string[]): Promise<SftpDeleteResult>;
@@ -234,7 +236,10 @@ export interface SftpService {
     serverId: string,
     dir: string,
     localPaths: string[],
-    opts?: { overwrite?: boolean },
+    /** `overwrite` is the conflict policy's Overwrite; `renameAs` maps a local path to a
+     *  caller-chosen remote name (the Rename choice — the file still ships from its local
+     *  path, only its remote name differs). Any renameAs name with `/` or NUL is rejected. */
+    opts?: { overwrite?: boolean; renameAs?: Record<string, string> },
   ): Promise<{ ok: true; skippedLocal: number } | SftpFailure>;
   /** Remote Paste: per-item from→to pairs, conflicts pre-solved (suffix) by the renderer. */
   copy(
@@ -885,6 +890,28 @@ export function createSftpService(deps: SftpDeps): SftpService {
       );
     },
 
+    /** The pane's New File… — an empty remote file via the SFTP "w" open (truncate) + close. */
+    createFile(serverId, rawPath) {
+      const path = normalizeRemotePath(rawPath);
+      if (!path) {
+        return Promise.resolve<SftpOk>({ ok: false, error: "Invalid path." });
+      }
+      return runOp<SftpOk>(
+        serverId,
+        (message) => ({ ok: false, error: message }),
+        async (channel) => {
+          let handle: unknown;
+          try {
+            handle = await openHandle(channel, path, "w");
+          } catch (err) {
+            return { ok: false, error: (err as Error).message };
+          }
+          await closeHandle(channel, handle);
+          return { ok: true };
+        },
+      );
+    },
+
     rename(serverId, rawFrom, rawTo) {
       const from = normalizeRemotePath(rawFrom);
       const to = normalizeRemotePath(rawTo);
@@ -1029,7 +1056,16 @@ export function createSftpService(deps: SftpDeps): SftpService {
           continue;
         }
         const name = remoteBasename(mine.replace(/\\/g, "/"));
-        const target = joinRemote(dir, name);
+        const renameAs = opts?.renameAs?.[mine];
+        const usableName =
+          renameAs && !renameAs.includes("/") && !renameAs.includes("\0")
+            ? renameAs
+            : name;
+        if (renameAs && usableName !== renameAs) {
+          skippedLocal++; // an invalid rename target never silently becomes the source name
+          continue;
+        }
+        const target = joinRemote(dir, usableName);
         if (!target) {
           skippedLocal++;
           continue;
@@ -1055,7 +1091,7 @@ export function createSftpService(deps: SftpDeps): SftpService {
           serverId,
           remotePath: target,
           fromLocalPath: mine,
-          name,
+          name: usableName,
           bytesDone: 0,
           bytesTotal: reader.size > 0 ? reader.size : null,
           status: "active",

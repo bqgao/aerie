@@ -17,6 +17,7 @@ export const SFTP = {
   list: "servers:sftp:list",
   stat: "servers:sftp:stat",
   mkdir: "servers:sftp:mkdir",
+  createFile: "servers:sftp:createFile",
   rename: "servers:sftp:rename",
   deleteFn: "servers:sftp:delete",
   home: "servers:sftp:home",
@@ -109,6 +110,8 @@ export interface SftpApi {
   /** Resolve the server's home directory (SFTPv3 realpath ".") — the pane's first context. */
   home(serverId: string): Promise<{ ok: true; path: string } | SftpFailure>;
   mkdir(serverId: string, path: string): Promise<SftpOk>;
+  /** Create an empty remote file (New File…). */
+  createFile(serverId: string, path: string): Promise<SftpOk>;
   rename(serverId: string, from: string, to: string): Promise<SftpOk>;
   delete(
     serverId: string,
@@ -121,13 +124,14 @@ export interface SftpApi {
     remotePaths: string[],
   ): Promise<SftpQueuedResult>;
   /** Upload local paths into remote `dir`. The renderer resolves conflict policy FIRST (stat
-   *  probes or the cached list) and passes `overwrite` for confirmed collisions. Empty
-   *  `localPaths` opens the native multi-file picker in main instead (the Upload Here… menu). */
+   *  probes or the cached list) and passes `overwrite` for confirmed collisions + `renameAs`
+   *  (localPath → remote name) for the Rename choice. Empty `localPaths` opens the native
+   *  multi-file picker in main instead (the Upload Here… menu). */
   upload(
     serverId: string,
     dir: string,
     localPaths: string[],
-    opts?: { overwrite?: boolean },
+    opts?: { overwrite?: boolean; renameAs?: Record<string, string> },
   ): Promise<SftpQueuedResult>;
   /** Server-side copy (the remote Paste): per-item `from`→`to` pairs with conflicts PRE-solved
    *  by the renderer (rename-suffix already applied). SFTPv3 has no server-side copy op, so

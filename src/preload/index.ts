@@ -221,6 +221,8 @@ const api: AppApi = {
     stat: (serverId, path) => ipcRenderer.invoke(SFTP.stat, serverId, path),
     home: (serverId) => ipcRenderer.invoke(SFTP.home, serverId),
     mkdir: (serverId, path) => ipcRenderer.invoke(SFTP.mkdir, serverId, path),
+  createFile: (serverId, path) =>
+    ipcRenderer.invoke(SFTP.createFile, serverId, path),
     rename: (serverId, from, to) =>
       ipcRenderer.invoke(SFTP.rename, serverId, from, to),
     delete: (serverId, paths) =>
