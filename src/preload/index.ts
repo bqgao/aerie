@@ -14,6 +14,7 @@ import { TERMINAL } from "@shared/terminal";
 import { SHELL_TERMINAL } from "@shared/shell-terminal";
 import { SSH_TERMINAL } from "@shared/ssh-terminal";
 import { SFTP } from "@shared/sftp";
+import { FILEIO } from "@shared/fileio";
 
 const api: AppApi = {
   overview: () => ipcRenderer.invoke(IPC.overview),
@@ -242,6 +243,11 @@ const api: AppApi = {
       ipcRenderer.on(SFTP.event, handler);
       return () => ipcRenderer.removeListener(SFTP.event, handler);
     },
+  },
+  fileio: {
+    read: (path) => ipcRenderer.invoke(FILEIO.read, path),
+    write: (path, content) => ipcRenderer.invoke(FILEIO.write, path, content),
+    pick: () => ipcRenderer.invoke(FILEIO.pick),
   },
   getPathForFile: (file) => webUtils.getPathForFile(file as File),
 };

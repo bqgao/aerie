@@ -15,6 +15,8 @@ import { createSshClientFactory } from "./servers/ssh2-factory";
 import { createRemoteTransport } from "./servers/remote-transport";
 import { createSftpService } from "./servers/sftp-service";
 import { registerSftpIpc } from "./servers/sftp-ipc";
+import { registerFileIoIpc } from "./fileio/fileio-ipc";
+import { createFileIoService } from "./fileio/fileio-service";
 import type { SftpService } from "./servers/sftp-service";
 import { isHttpUrl } from "./open-external";
 import { join } from "node:path";
@@ -216,6 +218,13 @@ function createWindow(
     const { noteDown } = registerSftpIpc({ window: win, service: sftpService });
     sftpDown.noteDown = noteDown;
   }
+
+  // The editor pane's local-disk surface: a fresh app-level service whose data-dir refusal
+  // reads Electron's userData lazily (valid only after app ready — createWindow runs by then).
+  registerFileIoIpc({
+    window: win,
+    service: createFileIoService({ dataDirs: () => [app.getPath("userData")] }),
+  });
 
   win.on("closed", () => registerRename(() => {}));
 
