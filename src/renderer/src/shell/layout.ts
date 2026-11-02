@@ -28,3 +28,10 @@ ensurePaneRegistered(SFTP_PANE_ID, { open: false });
 export const EDITOR_PANE_ID = "editor";
 
 ensurePaneRegistered(EDITOR_PANE_ID, { open: false });
+
+/** The transcript search pane (B1): a right-hand docked pane, default closed. The rail-like
+ *  browsing surface the Search spec recommends; opened from the titlebar's search toggle (and
+ *  a B2 palette row later). */
+export const SEARCH_PANE_ID = "search";
+
+ensurePaneRegistered(SEARCH_PANE_ID, { open: false });

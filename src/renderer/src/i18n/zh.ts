@@ -890,6 +890,17 @@ export const zh: Translations = {
     // windowFiveHour/windowSevenDay above, kept identical across locales.
     windowLabel: (minutes) => formatWindowLabel(minutes),
   },
+  // B1 全文检索（Search 面板）。刻意精简：面板复用会话行的视觉语法，多数标签无需新增。
+  search: {
+    title: "全文检索",
+    placeholder: "检索会话记录…",
+    noQuery: "跨 Claude Code、Codex 与 OpenCode 会话检索。",
+    noResults: "无匹配结果。",
+    backfilling: "正在构建记录索引…",
+    degraded: "记录检索不可用。",
+    unavailable: "不可用",
+    hits: (n: number) => `${n} 条命中`,
+  },
   numbers: {
     // Chinese groups large numbers by powers of 10^4 (万 = 10,000, 亿 = 100,000,000),
     // not 10^3 like en's k/M — mirrors formatTokensShort/formatTokensAxis's own

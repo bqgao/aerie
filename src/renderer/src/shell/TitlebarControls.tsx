@@ -8,6 +8,7 @@ import {
   CBW_LEFT_PANE_ID,
   CBW_RIGHT_PANE_ID,
   EDITOR_PANE_ID,
+  SEARCH_PANE_ID,
   SFTP_PANE_ID,
 } from "./layout";
 import { $serverProfiles } from "../shell-terminal/ssh-model";
@@ -68,6 +69,13 @@ export function TitlebarControls({ hasSession }: { hasSession: boolean }) {
           }
           onSelect={() => togglePane(CBW_LEFT_PANE_ID)}
         />
+        {/* B1: the transcript search pane's toggle. A browsing surface per the spec's recon, so
+            a pane (not a modal) — the button is a plain show/hide affordance like its siblings. */}
+        <TitlebarToolButton
+          icon="search"
+          label={t.search.title}
+          onSelect={() => togglePane(SEARCH_PANE_ID)}
+        />
         {hasServers && (
           <TitlebarToolButton
             icon="folder"
@@ -112,7 +120,7 @@ function TitlebarToolButton({
   label,
   onSelect,
 }: {
-  icon: "panel-left" | "panel-right" | "folder" | "scroll-text";
+  icon: "panel-left" | "panel-right" | "folder" | "search" | "scroll-text";
   label: string;
   onSelect: () => void;
 }) {

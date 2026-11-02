@@ -972,6 +972,18 @@ export const en = {
     // technical shorthand as windowFiveHour/windowSevenDay below, kept identical across locales.
     windowLabel: (minutes: number) => formatWindowLabel(minutes),
   },
+  // B1 transcript search (Search pane). Kept small by design: the pane reuses the rail row
+  // grammar, so most of its labels aren't pane-specific.
+  search: {
+    title: "Search transcripts",
+    placeholder: "Search transcripts…",
+    noQuery: "Search across Claude Code, Codex, and OpenCode sessions.",
+    noResults: "No matches.",
+    backfilling: "Building the transcript index…",
+    degraded: "Transcript search is unavailable.",
+    unavailable: "unavailable",
+    hits: (n: number) => `${n} hit${n === 1 ? "" : "s"}`,
+  },
   // Large-number abbreviation. English groups by powers of 10^3 (k/M) via the shared
   // formatTokensShort/formatTokensAxis helpers; zh groups by powers of 10^4 (万/亿) with
   // its own thresholds — a genuinely different scheme, not just a different unit string.

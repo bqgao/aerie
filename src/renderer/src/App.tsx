@@ -34,6 +34,7 @@ import { Icon } from "./ui/icons";
 import { StatsView } from "./stats/StatsView";
 import { OVERVIEW_ID } from "./stats/sentinel";
 import { useStatsPump } from "./stats/use-stats-pump";
+import { useSearchPump } from "./search/use-search-pump";
 import { SettingsView, type SettingsSection } from "./settings/SettingsView";
 import { SETTINGS_ID } from "./settings/sentinel";
 import { useUpdate } from "./ui/use-update";
@@ -60,8 +61,9 @@ import {
 } from "./shell/layout";
 import { TerminalPaneChrome } from "./shell-terminal/chrome";
 import { SftpPane } from "./shell/sftp/SftpPane";
-import { SFTP_PANE_ID, EDITOR_PANE_ID } from "./shell/layout";
+import { SFTP_PANE_ID, EDITOR_PANE_ID, SEARCH_PANE_ID } from "./shell/layout";
 import { EditorPane } from "./shell/editor/EditorPane";
+import { SearchPane } from "./search/SearchPane";
 import { PersistentTerminal } from "./shell-terminal/persistent";
 import { installTerminalKeybind } from "./shell-terminal/keybinds";
 import { $activeSessionCwd, $terminalTakeover } from "./shell-terminal/store";
@@ -81,6 +83,8 @@ export function App() {
   // The app-lifetime analytics pump: ingests transcripts into the durable stats mirror even when the
   // Stats view never opens, so Claude Code's transcript cleanup can't outrun ingestion.
   useStatsPump();
+  // B1: the transcript search index's own pump — a sibling cadence on the renderer clock.
+  useSearchPump();
   const [sessions, setSessions] = useState<Session[]>([]);
   // Optimistic Managed sessions spawned this run that discovery hasn't indexed yet. Merged into the
   // list so a new session shows + opens immediately; pruned once its real row lands.
@@ -528,6 +532,7 @@ export function App() {
   const rightOpen = useStore($paneOpen(CBW_RIGHT_PANE_ID));
   const sftpPaneOpen = useStore($paneOpen(SFTP_PANE_ID));
   const editorPaneOpen = useStore($paneOpen(EDITOR_PANE_ID));
+  const searchPaneOpen = useStore($paneOpen(SEARCH_PANE_ID));
   const terminalOpen = useStore($terminalTakeover);
   // Hermes' railColumnOpen gate, cbw-translated: the terminal drops to a row inside the right
   // rail only when the metrics sidebar is actually docked as a column (open, session selected,
@@ -722,6 +727,17 @@ export function App() {
           disabled={!editorPaneOpen}
         >
           <EditorPane />
+        </Pane>
+        <Pane
+          id={SEARCH_PANE_ID}
+          side="right"
+          width="24vw"
+          minWidth="17rem"
+          maxWidth="42vw"
+          divider
+          disabled={!searchPaneOpen}
+        >
+          <SearchPane onSelectSession={setSelectedId} />
         </Pane>
         <Pane
           id={CBW_RIGHT_PANE_ID}
