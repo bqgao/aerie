@@ -77,9 +77,14 @@ export function ServerRailSection({
       </button>
       {!collapsed &&
         (servers.length === 0 ? (
-          <p className="px-2.5 py-1 text-xs text-(--ui-text-quaternary)">
+          <button
+            type="button"
+            data-ssh-servers-empty
+            onClick={() => onRoute(SETTINGS_ID)}
+            className="mt-0.5 flex w-full items-center gap-1 rounded-sm px-2.5 py-1 text-left text-xs text-(--ui-text-quaternary) hover:bg-(--ui-row-hover-background) hover:text-fg"
+          >
             {t.shell.servers.emptyState}
-          </p>
+          </button>
         ) : (
           <div className="flex flex-col gap-px px-2.5">
             {servers.map((server) => {

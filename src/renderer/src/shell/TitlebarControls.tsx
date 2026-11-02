@@ -4,7 +4,12 @@ import { Icon } from "../ui/icons";
 import { useFullscreen } from "../ui/use-fullscreen";
 import { useI18n } from "../i18n";
 import { $paneOpen, togglePane } from "./panes";
-import { CBW_LEFT_PANE_ID, CBW_RIGHT_PANE_ID, SFTP_PANE_ID } from "./layout";
+import {
+  CBW_LEFT_PANE_ID,
+  CBW_RIGHT_PANE_ID,
+  EDITOR_PANE_ID,
+  SFTP_PANE_ID,
+} from "./layout";
 import { $serverProfiles } from "../shell-terminal/ssh-model";
 import {
   TITLEBAR_CONTROL_WIDTH,
@@ -70,6 +75,14 @@ export function TitlebarControls({ hasSession }: { hasSession: boolean }) {
             onSelect={() => togglePane(SFTP_PANE_ID)}
           />
         )}
+        {/* The Editor toggle is ALWAYS visible: opening local files needs no server, and hiding
+            it behind a saved-server gate left a cold-start dead end (no SFTP → no Edit menu →
+            no editor at all). The pane's Open menu offers Local… regardless of servers. */}
+        <TitlebarToolButton
+          icon="scroll-text"
+          label={t.editor.pane.title}
+          onSelect={() => togglePane(EDITOR_PANE_ID)}
+        />
       </div>
       {hasSession && (
         <div
@@ -99,7 +112,7 @@ function TitlebarToolButton({
   label,
   onSelect,
 }: {
-  icon: "panel-left" | "panel-right" | "folder";
+  icon: "panel-left" | "panel-right" | "folder" | "scroll-text";
   label: string;
   onSelect: () => void;
 }) {
