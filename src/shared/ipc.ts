@@ -30,6 +30,7 @@ import type { PdfTempApi } from "./pdftemp";
 import type { MetricsRead } from "./metrics";
 import type { ModelDefaults } from "./models";
 import type { StatsSnapshot, StatsRange, ScanProgress } from "./stats";
+import type { SearchProgress, SearchQueryResult, SearchRead } from "./search";
 import type { CliStatus, CliStatusByAgent } from "./cli-status";
 import type { AgentId } from "./agents";
 import type { UpdateState } from "./update";
@@ -69,6 +70,11 @@ export const IPC = {
   modelDefaults: "model:defaults",
   readStats: "stats:read",
   pumpStats: "stats:pump",
+  /** B1 transcript search: progress read (with a change token), one bounded scan step, and a
+   *  full-text query. Handlers never reject (in-band failures on the query + read shapes). */
+  searchRead: "search:read",
+  pumpSearch: "search:pump",
+  searchQuery: "search:query",
   dbInfo: "db:info",
   recheckCli: "cli:recheck",
   resetAnalytics: "analytics:reset",
@@ -287,6 +293,18 @@ export interface IpcApi {
    *  costs one readdir+stat walk. Polled for the app's lifetime by useStatsPump; never rejects (a
    *  scan failure or missing store serves a done progress, parking the pump at its idle cadence). */
   pumpStats(): Promise<ScanProgress>;
+  /** Run one bounded, incremental search-scan step and return the combined progress + per-source
+   *  status — the search pump's poll (B1 spec). Never rejects: a thrown step serves a done
+   *  progress, parking the pump at its idle cadence (mirrors pumpStats). */
+  pumpSearch(): Promise<SearchProgress>;
+  /** The search backfill readout: progress + per-source status, tagged with a change token. Pass
+   *  the last token as `since`; when nothing has moved, the result is `unchanged` and no progress
+   *  is built. Polled while the Search pane is open; never rejects. */
+  readSearch(since?: string): Promise<SearchRead>;
+  /** Run an FTS query across the indexed transcripts: grouped-by-session rows, ranked by bm25.
+   *  Handlers never reject — a malformed query or a store failure is an in-band
+   *  `{ ok: false, error }`. */
+  searchQuery(q: string, limit?: number): Promise<SearchQueryResult>;
   /** Settings → Databases readout, assembled in main so the renderer gets one shape for both stores.
    *  Polled at the warm cadence while the section is mounted. Resolves null when no store is wired or
    *  the read fails; never rejects. */

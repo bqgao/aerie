@@ -24,6 +24,9 @@ const api: AppApi = {
   readStats: (agent, range, calendarYear, since) =>
     ipcRenderer.invoke(IPC.readStats, agent, range, calendarYear, since),
   pumpStats: () => ipcRenderer.invoke(IPC.pumpStats),
+  pumpSearch: () => ipcRenderer.invoke(IPC.pumpSearch),
+  readSearch: (since) => ipcRenderer.invoke(IPC.searchRead, since),
+  searchQuery: (q, limit) => ipcRenderer.invoke(IPC.searchQuery, q, limit),
   dbInfo: () => ipcRenderer.invoke(IPC.dbInfo),
   recheckCli: (agent) => ipcRenderer.invoke(IPC.recheckCli, agent),
   resetAnalytics: () => ipcRenderer.invoke(IPC.resetAnalytics),

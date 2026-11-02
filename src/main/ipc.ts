@@ -92,6 +92,15 @@ import {
   upsertWorktree,
   readAnalyticsDbCounts,
 } from "./db/analytics";
+import { searchScanStep, type SearchScanTarget } from "./search/search-scan";
+import { searchTranscripts } from "./search/search-query";
+import { openReadonlyDb } from "./db/sqlite";
+import {
+  emptySearchProgress,
+  type SearchProgress,
+  type SearchQueryResult,
+  type SearchRead,
+} from "@shared/search";
 import { createRepoIdentityMap } from "./git/repo-identity";
 import {
   scanStep,
@@ -101,6 +110,8 @@ import {
   type WalkCache,
 } from "./analytics/scan";
 import { collectCodexScanTargets, scanCodexStep } from "./analytics/codex-scan";
+import { listRollouts } from "./provider/codex/rollout";
+import { indexTranscripts } from "./provider/claude/discover";
 import type {
   StatsTotals,
   StatsRecords,
@@ -263,6 +274,12 @@ export interface IpcDeps {
   /** Where the analytics store lives on disk (userData/analytics.db), for the Settings card's
    *  location/size readout. Optional like analyticsDb — dev harnesses may wire neither. */
   analyticsDbPath?: string;
+  /** The full-text search store (B1, userData/search.db). When absent (a wired-off or failed
+   *  open), every search handler serves well-formed empty/degraded responses. */
+  searchDb?: SqliteDb;
+  /** The OpenCode agent's own local store (~/.local/share/opencode/opencode.db). Read STRICTLY
+   *  readonly by the scan. Absent (harnesses) → the opencode source contributes nothing. */
+  opencodeDbPath?: string;
   /** Where the rebuildable live-session index lives (userData/index.db). */
   indexDbPath?: string;
   /** The cached CLI-status controller. Defaults to a no-op that always returns null. */
@@ -336,6 +353,8 @@ export function registerIpc({
   codexDir,
   analyticsDbPath,
   indexDbPath,
+  searchDb,
+  opencodeDbPath,
   cliStatus,
   managed,
   sessionTitles,
@@ -1324,6 +1343,115 @@ export function registerIpc({
       done: steps.every((step) => step.done),
     };
   });
+
+  // ── B1 transcript search ─────────────────────────────────────────────────────────────────────
+  // The search index's own bounded scan step (search:pump) + progress read (search:read) + FTS
+  // query (search:query), following the stats engine's cadence discipline. The walk cache
+  // (WALK_TTL_MS, shared with the stats walk) keeps a 40ms backfill burst from re-walking the
+  // transcripts dirs ~25×/sec; handlers never reject.
+
+  // The search walk is a full, unpruned sweep (indexTranscripts — parent transcripts only, unlike
+  // the stats walk's subagent expansion), so the session id rides the target directly.
+  const searchWalkCaches: Partial<
+    Record<"claude" | "codex", { targets: SearchScanTarget[]; atMs: number }>
+  > = {};
+  const searchCollectFor = (
+    agent: "claude" | "codex",
+    now: number,
+  ): SearchScanTarget[] => {
+    const dir = agent === "claude" ? claudeDir : codexDir;
+    if (!dir) return [];
+    const cache = searchWalkCaches[agent];
+    if (cache && now - cache.atMs < WALK_TTL_MS) return cache.targets;
+    const targets =
+      agent === "claude"
+        ? [...indexTranscripts(dir)].map(
+            ([sessionId, { path, mtimeMs }]: [
+              string,
+              { path: string; mtimeMs: number },
+            ]) => ({ path, mtimeMs, sessionId }),
+          )
+        : listRollouts(dir).map((r) => ({
+            path: r.path,
+            mtimeMs: r.mtimeMs,
+            sessionId: r.id,
+          }));
+    searchWalkCaches[agent] = { targets, atMs: now };
+    return targets;
+  };
+
+  const searchStep = (): SearchProgress => {
+    if (!searchDb) return emptySearchProgress();
+    try {
+      return searchScanStep(searchDb, {
+        claudeDir,
+        codexDir,
+        opencodeDbPath,
+        collectClaudeTargets: () => searchCollectFor("claude", Date.now()),
+        collectCodexTargets: () => searchCollectFor("codex", Date.now()),
+        openReadonly: (p) => {
+          try {
+            return openReadonlyDb(p);
+          } catch {
+            return null;
+          }
+        },
+      });
+    } catch (err) {
+      logError(
+        "search-scan-step-failed",
+        "search scan step failed; serving done progress",
+        err,
+      );
+      return emptySearchProgress();
+    }
+  };
+
+  const searchProgressToken = (p: SearchProgress): string =>
+    `search:${p.filesDone}/${p.filesTotal}:${p.sources
+      .map((s) => `${s.agent}${s.unavailable ? "!" : "@"}`)
+      .join("")}`;
+
+  ipcMain.handle(IPC.pumpSearch, (): SearchProgress => searchStep());
+
+  // The search progress poll: a fresh progress + per-source status, tagged with a token that
+  // folds the file counts and every source's availability into one string — a step that moves
+  // either re-renders the pane; a caught-up, state-stable poll reads unchanged.
+  ipcMain.handle(IPC.searchRead, (_e, since?: string): SearchRead => {
+    const step = searchStep();
+    const token = searchProgressToken(step);
+    if (since === token) return { status: "unchanged", token };
+    return { status: "changed", token, progress: step };
+  });
+
+  ipcMain.handle(
+    IPC.searchQuery,
+    (_e, rawQ?: unknown, rawLimit?: unknown): SearchQueryResult => {
+      if (!searchDb)
+        return { ok: false, error: "Search is unavailable in this session." };
+      if (typeof rawQ !== "string") return { ok: true, groups: [] };
+      try {
+        return searchTranscripts(
+          searchDb,
+          rawQ,
+          typeof rawLimit === "number" &&
+            Number.isFinite(rawLimit) &&
+            rawLimit > 0
+            ? Math.floor(rawLimit)
+            : undefined,
+        );
+      } catch (err) {
+        // The runner converts store errors itself; this tail is the literal belt for the
+        // never-rejects rule (a prepare/dispose race, an IPC unwind mid-read).
+        logError(
+          "search-query-failed",
+          "search query failed; serving in-band failure",
+          err,
+        );
+        return { ok: false, error: "Search failed; try again." };
+      }
+    },
+  );
 
   // The Stats "Reset" action: drop the durable store so the next poll rebuilds it from disk. Clearing
   // processed_files forces a full re-scan; clearing turns drops the change token to zero, so the renderer's

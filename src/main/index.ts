@@ -30,6 +30,7 @@ import { homedir } from "node:os";
 import { openDb } from "./db/sqlite";
 import type { SqliteDb } from "./db/driver";
 import { migrate, getSessionAgent } from "./db/store";
+import { migrateSearch } from "./db/search";
 import { migrateAnalytics } from "./db/analytics";
 import { createClaudeProvider } from "./provider/claude";
 import { createCodexProvider } from "./provider/codex";
@@ -297,6 +298,28 @@ app
       );
       analyticsDb = undefined;
     }
+    // The full-text search store (B1). The same optional contract as the analytics store: a store
+    // that can't be opened (corrupt file, lock storm) never costs the user a window — search
+    // serves its in-band unavailable state instead. This file is OURS, so openDb (WAL) is safe
+    // here; the FOREIGN opencode.db is always opened readonly (search-scan.ts).
+    const searchDbPath = join(app.getPath("userData"), "search.db");
+    let searchDb: SqliteDb | undefined;
+    try {
+      searchDb = openDb(searchDbPath);
+      migrateSearch(searchDb);
+    } catch (err) {
+      logError(
+        "search-store-unavailable",
+        "search store unavailable; transcript search is off",
+        err,
+      );
+      searchDb = undefined;
+    }
+    // The opencode agent's own SQLite store, at its well-known data location (the recon's probed
+    // path). XDG_DATA_HOME honors relocation as the opencode CLI itself does on unix.
+    const opencodeDataDir =
+      process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share");
+    const opencodeDbPath = join(opencodeDataDir, "opencode", "opencode.db");
     // The registry of app-spawned ids, shared by reference: the terminal IPC writes it on spawn, the
     // provider reads it to label discovered sessions Managed.
     const managed = createManagedRegistry();
@@ -719,6 +742,8 @@ app
       analyticsDb,
       analyticsDbPath,
       indexDbPath,
+      searchDb,
+      opencodeDbPath,
       claudeDir,
       codexDir,
       cliStatus,
