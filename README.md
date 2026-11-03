@@ -44,15 +44,17 @@ project, searchable, each flagging its live state.
 - **Context menus that fit.** The session menu clamps to the viewport (flip, then slide) and
   scrolls past a viewport-height cap instead of running off the bottom of the window.
 - **Local-first packaging.** No update server, no publish target: `pnpm dist` / `pnpm dist:win`
-  produce installers you run yourself.
+  produce installers you run yourself. (The upstream release workflow that built signed installers
+  in CI is removed here — it needs an Apple Developer ID and repository secrets this fork doesn't
+  have, so builds are local.)
 
 ## Install
 
-| Platform              | Artifact                        |
-| --------------------- | ------------------------------- |
-| macOS · Apple Silicon | `release/Aerie-arm64.dmg`       |
-| Windows · x64         | `release/Aerie-Setup-x64.exe`   |
-| Windows · ARM64       | `release/Aerie-Setup-arm64.exe` |
+| Platform              | Artifact                                                                                                 |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| macOS · Apple Silicon | [`Aerie-arm64.dmg`](https://github.com/bqgao/aerie/releases/latest/download/Aerie-arm64.dmg)             |
+| Windows · x64         | [`Aerie-Setup-x64.exe`](https://github.com/bqgao/aerie/releases/latest/download/Aerie-Setup-x64.exe)     |
+| Windows · ARM64       | [`Aerie-Setup-arm64.exe`](https://github.com/bqgao/aerie/releases/latest/download/Aerie-Setup-arm64.exe) |
 
 Locally built apps are **unsigned**. On macOS the first launch may need right-click → **Open**, or
 `xattr -dr com.apple.quarantine /Applications/Aerie.app`. On Windows, SmartScreen warns: click

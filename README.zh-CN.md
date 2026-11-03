@@ -37,11 +37,11 @@
 
 ## 安装
 
-| 平台                  | 产物                            |
-| --------------------- | ------------------------------- |
-| macOS · Apple Silicon | `release/Aerie-arm64.dmg`       |
-| Windows · x64         | `release/Aerie-Setup-x64.exe`   |
-| Windows · ARM64       | `release/Aerie-Setup-arm64.exe` |
+| 平台                  | 产物                                                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| macOS · Apple Silicon | [`Aerie-arm64.dmg`](https://github.com/bqgao/aerie/releases/latest/download/Aerie-arm64.dmg)             |
+| Windows · x64         | [`Aerie-Setup-x64.exe`](https://github.com/bqgao/aerie/releases/latest/download/Aerie-Setup-x64.exe)     |
+| Windows · ARM64       | [`Aerie-Setup-arm64.exe`](https://github.com/bqgao/aerie/releases/latest/download/Aerie-Setup-arm64.exe) |
 
 本地构建的应用**未签名**。macOS 首次打开可能需要右键 → **打开**，或执行
 `xattr -dr com.apple.quarantine /Applications/Aerie.app`；Windows 上 SmartScreen 会拦截，
