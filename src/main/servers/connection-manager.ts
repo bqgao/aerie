@@ -160,6 +160,20 @@ export interface SshConnectConfig {
   agent?: string;
 }
 
+/** The ssh-agent endpoint to hand ssh2: `$SSH_AUTH_SOCK` when it names one, else — on Windows,
+ *  where the env var conventionally doesn't exist — the OpenSSH agent's named pipe (ssh2 accepts
+ *  a pipe path as its `agent` option). Null when this host has nothing to offer, so the caller
+ *  can answer with a reason instead of dialing a dead socket. */
+export function agentSocket(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  const fromEnv = env.SSH_AUTH_SOCK?.trim();
+  if (fromEnv) return fromEnv;
+  if (platform === "win32") return "\\\\.\\pipe\\openssh-ssh-agent";
+  return null;
+}
+
 export type SshClientFactory = (
   config: SshConnectConfig,
   handlers: {
@@ -309,12 +323,14 @@ export function createConnectionManager(deps: SshDeps): ConnectionManager {
       config.privateKey = key;
       if (creds?.passphrase) config.passphrase = creds.passphrase;
     } else {
-      if (!process.env.SSH_AUTH_SOCK)
+      const agent = agentSocket();
+      if (!agent)
         return {
           ok: false,
-          error: "SSH_AUTH_SOCK is not set — no agent to authenticate with.",
+          error:
+            "SSH_AUTH_SOCK is not set — no ssh-agent to authenticate with.",
         };
-      config.agent = process.env.SSH_AUTH_SOCK;
+      config.agent = agent;
     }
     return { ok: true, config };
   };

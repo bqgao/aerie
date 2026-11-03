@@ -1,11 +1,22 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Readable } from "node:stream";
 import type { ServerProfile } from "../../src/shared/servers";
 import {
+  agentSocket,
   createConnectionManager,
   type SshClientFactory,
   type SshClientRpc,
 } from "../../src/main/servers/connection-manager";
+
+/** The agent-mode path reads $SSH_AUTH_SOCK at call time; CI runners (and Windows generally) don't
+ *  set one, which made every agent-mode case here fail as "no live dial". Pin it for this file so
+ *  the harness depends on its own fixture, not the host's environment. */
+beforeEach(() => {
+  vi.stubEnv("SSH_AUTH_SOCK", "/tmp/aerie-test-agent.sock");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 /** A scripted ssh2 fake: records every dial config, and hands tests a tiny controller to fire
  *  ready / error / close / exec output in whichever order they like. */
@@ -442,5 +453,32 @@ describe("createConnectionManager", () => {
       error: "Unknown profile.",
     });
     expect(ssh.configs).toHaveLength(0);
+  });
+});
+
+describe("agentSocket", () => {
+  it("prefers $SSH_AUTH_SOCK wherever it is set", () => {
+    expect(agentSocket({ SSH_AUTH_SOCK: "/run/agent.sock" }, "linux")).toBe(
+      "/run/agent.sock",
+    );
+    expect(agentSocket({ SSH_AUTH_SOCK: "/run/agent.sock" }, "win32")).toBe(
+      "/run/agent.sock",
+    );
+  });
+
+  it("falls back to the OpenSSH named pipe on Windows without the env var", () => {
+    expect(agentSocket({}, "win32")).toBe("\\\\.\\pipe\\openssh-ssh-agent");
+  });
+
+  it("treats a blank env var as absent", () => {
+    expect(agentSocket({ SSH_AUTH_SOCK: "   " }, "win32")).toBe(
+      "\\\\.\\pipe\\openssh-ssh-agent",
+    );
+    expect(agentSocket({ SSH_AUTH_SOCK: "   " }, "linux")).toBeNull();
+  });
+
+  it("has nothing to offer on POSIX without the env var", () => {
+    expect(agentSocket({}, "darwin")).toBeNull();
+    expect(agentSocket({}, "linux")).toBeNull();
   });
 });
