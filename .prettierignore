@@ -5,3 +5,5 @@ pnpm-lock.yaml
 .claude/skills/
 CHANGELOG.md
 docs/superpowers/
+src/main/dock-icon-legacy-asset.ts
+build/icon-candidates/

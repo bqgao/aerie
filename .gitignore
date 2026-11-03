@@ -28,3 +28,4 @@ graphify-out/
 .design-previews/
 .vercel
 .env*
+build/icon-candidates/

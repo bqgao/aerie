@@ -1039,8 +1039,7 @@ export function registerIpc({
   );
   ipcMain.handle(
     IPC.appearanceSetReadingTheme,
-    (_e, theme: "default" | "github"): void =>
-      settings.setReadingTheme(theme),
+    (_e, theme: "default" | "github"): void => settings.setReadingTheme(theme),
   );
   ipcMain.handle(
     IPC.appearanceGetLocale,
