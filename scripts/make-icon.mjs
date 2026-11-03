@@ -20,12 +20,14 @@
 //                                        bounds, keeping the tile's rounded corners. Windows draws
 //                                        icons as-is with no rounded-rect frame, so it needs the
 //                                        rounding baked in.
-//   src/main/dock-icon-legacy-asset.ts — macOS <=15 Dock icon override. The raw source
-//                                        unmodified (clip-path + hairline border, full 1024
-//                                        canvas, 824/1024 fill — the traditional padded
-//                                        squircle), base64-embedded so src/main/dock-icon.ts can
-//                                        swap the running app's Dock icon to it at launch on
-//                                        pre-Tahoe macOS.
+//   src/main/dock-icon-legacy-asset.ts — macOS <=15 Dock icon override. The artwork on the
+//                                        traditional 824/1024 grid: a rounded tile (rx 184)
+//                                        with transparent corners instead of the source's
+//                                        full-bleed background, base64-embedded so
+//                                        src/main/dock-icon.ts can swap the running app's Dock
+//                                        icon to it at launch on pre-Tahoe macOS. Pre-Tahoe
+//                                        Dock icons are not system-masked, so a full-bleed
+//                                        square there reads oversized next to native icons.
 //
 // Forces a 2x device scale and downscales, so the result is crisp regardless of the
 // host's display (a 1x monitor would otherwise rasterize 1:1 with no supersampling),
@@ -106,11 +108,16 @@ app.whenReady().then(async () => {
   writeFileSync(join(root, "build", "icon-win.png"), await capture(svgWin));
   console.log("wrote build/icon-win.png");
 
-  // Traditional pre-Tahoe style: the raw source unmodified (clip-path + hairline border, full
-  // 1024 canvas, 824/1024 fill) — exactly what icon.png rendered before commit 3b64153 cropped
-  // and stripped it for Tahoe. Embedded as a base64 data URL so the running app can swap the
-  // Dock icon to it at launch (see src/main/dock-icon.ts) with no packaged-resource plumbing.
-  const legacyPng = await capture(svg);
+  // Traditional pre-Tahoe style: the same artwork on the classic 824/1024 grid with transparent
+  // corners — the source's full-bleed background becomes a rounded tile. Pre-Tahoe Dock icons
+  // are drawn as-is (no system mask), so this is what keeps the icon optically the same size as
+  // native ones. Embedded as a base64 data URL so the running app can swap the Dock icon to it
+  // at launch (see src/main/dock-icon.ts) with no packaged-resource plumbing.
+  const svgLegacy = svg.replace(
+    '<rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>',
+    '<rect x="100" y="100" width="824" height="824" rx="184" fill="url(#bg)"/>',
+  );
+  const legacyPng = await capture(svgLegacy);
   const legacyDataUrl = `data:image/png;base64,${legacyPng.toString("base64")}`;
   writeFileSync(
     join(root, "src", "main", "dock-icon-legacy-asset.ts"),
