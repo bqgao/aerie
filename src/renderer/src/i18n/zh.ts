@@ -610,6 +610,14 @@ export const zh: Translations = {
       fileExplorer: "文件资源管理器",
       fileManager: "文件管理器",
     },
+    // 工作区内聊天输入栏（Tier-1 Run 2 / A4）：面向可提示智能代理的底部输入条。
+    chatComposer: {
+      placeholder: "向此会话发送消息…",
+      inputLabel: "聊天消息",
+      send: "发送",
+      sendFailed: "消息未能发送。",
+      busyHint: "忙碌中——改为排队提示",
+    },
   },
   stats: {
     agentLabel: "智能代理",

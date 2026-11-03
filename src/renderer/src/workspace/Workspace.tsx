@@ -30,6 +30,7 @@ import { useMonitors } from "./use-monitors";
 import { useMonitorOutput } from "./use-monitor-output";
 import { useTasks } from "./use-tasks";
 import { ObservedTerminal } from "./ObservedTerminal";
+import { ChatComposer } from "./ChatComposer";
 import { OverlayScroll } from "../ui/OverlayScroll";
 import { MiddleHeader } from "../shell/MiddleHeader";
 import { SessionMenu } from "../shell/SessionMenu";
@@ -127,6 +128,20 @@ export function Workspace({
           setDrill={setDrill}
         />
       </div>
+      {/* The chat composer mounts at the workspace's bottom (below the body incl. the
+          ActivityDock); it self-gates on the registry's canPrompt flag + session state
+          (chat-composer-model.ts) and renders nothing for other agents. Mounted HERE —
+          not in WorkspaceBody — because it threads the menu callbacks through the
+          useSessionMenu hook (the queue-modal path) like SessionMenu above. */}
+      <ChatComposer
+        session={s}
+        canSpawn={canSpawn}
+        onResume={onResume}
+        onFork={onFork}
+        onEnd={onEnd}
+        onRename={onRename}
+        onTogglePin={onTogglePin}
+      />
     </div>
   );
 }

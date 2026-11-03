@@ -691,6 +691,17 @@ export const en = {
       fileExplorer: "File Explorer",
       fileManager: "File Manager",
     },
+    // The in-workspace chat composer (tier-1 Run 2 / A4): a slim footer bar for
+    // prompt-capable agents, riding the same opencodePrompt op as the prompt queue.
+    chatComposer: {
+      placeholder: "Send a message to this session…",
+      inputLabel: "Chat message",
+      send: "Send",
+      // The in-band failure fallback when the service's own reason is missing.
+      sendFailed: "Message failed to send.",
+      // The working-state hint; clicking it opens the rail's prompt-queue modal.
+      busyHint: "Busy — queue a prompt instead",
+    },
   },
   stats: {
     agentLabel: "Agent",
