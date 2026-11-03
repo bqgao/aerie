@@ -55,6 +55,16 @@ export function setTerminalTheme(mode: AppearanceMode): void {
   void window.api.setTerminalTheme(mode);
 }
 
+/** Typora-style theme for the reading surfaces (transcript + markdown preview). */
+export type ReadingThemeSetting = "default" | "github";
+export const $readingTheme = atom<ReadingThemeSetting>("default");
+
+/** Set the reading-surface theme — same shape as setTerminalTheme, independent setting. */
+export function setReadingTheme(theme: ReadingThemeSetting): void {
+  $readingTheme.set(theme);
+  void window.api.setReadingTheme(theme);
+}
+
 // Module-scope, not a React effect: both the initial hydration and the DOM side effect below must
 // run exactly once per renderer lifetime, regardless of how many components subscribe. Guarded so
 // this module stays importable from node-run tests (no window) and jsdom tests (no window.api,
@@ -64,6 +74,9 @@ if (typeof window !== "undefined" && window.api) {
   void window.api
     .getTerminalTheme()
     .then((mode: AppearanceMode) => $terminalTheme.set(mode));
+  void window.api
+    .getReadingTheme()
+    .then((theme: ReadingThemeSetting) => $readingTheme.set(theme));
 
   // "system" must track the OS live: flip the resolved theme when the preference changes,
   // without touching the persisted choice. Concrete themes ignore the stream.
@@ -93,5 +106,10 @@ if (typeof document !== "undefined") {
   // belongs to App theme alone.
   $terminalTheme.subscribe((mode) => {
     document.documentElement.dataset.terminalTheme = mode;
+  });
+  // Reading theme is CSS-only: index.css scopes the GitHub-Light reading palette
+  // to `[data-reading-theme="github"] .reading-surface` (transcript + preview).
+  $readingTheme.subscribe((theme) => {
+    document.documentElement.dataset.readingTheme = theme;
   });
 }

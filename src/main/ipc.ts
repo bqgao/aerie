@@ -403,6 +403,7 @@ export function registerIpc({
     setStatuslineEnabled: () => {},
     setAppTheme: () => {},
     setTerminalTheme: () => {},
+    setReadingTheme: () => {},
     setAppLocale: () => {},
   };
   const caff: Caffeinate = caffeinate ?? {
@@ -1031,6 +1032,15 @@ export function registerIpc({
   ipcMain.handle(
     IPC.appearanceSetTerminalTheme,
     (_e, theme: "dark" | "light"): void => settings.setTerminalTheme(theme),
+  );
+  ipcMain.handle(
+    IPC.appearanceGetReadingTheme,
+    (): "default" | "github" => settings.read().readingTheme ?? "default",
+  );
+  ipcMain.handle(
+    IPC.appearanceSetReadingTheme,
+    (_e, theme: "default" | "github"): void =>
+      settings.setReadingTheme(theme),
   );
   ipcMain.handle(
     IPC.appearanceGetLocale,

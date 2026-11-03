@@ -21,7 +21,13 @@ export interface AppSettings {
    *  normalizeLocale over it, so a persisted alias ("zh-CN") or garbage still reads as a
    *  supported locale. */
   appLocale?: Locale;
+  /** Typora-style theme for the reading surfaces (transcript + markdown preview).
+   * Missing means "default" (the app's built-in look). */
+  readingTheme?: ReadingTheme;
 }
+
+/** Built-in reading themes. "default" = the app's own look; "github" = GitHub Light. */
+export type ReadingTheme = "default" | "github";
 
 export interface AppSettingsStore {
   read(): AppSettings;
@@ -30,6 +36,7 @@ export interface AppSettingsStore {
   setAppTheme(theme: "dark" | "light" | "system"): void;
   setTerminalTheme(theme: "dark" | "light"): void;
   setAppLocale(locale: Locale): void;
+  setReadingTheme(theme: ReadingTheme): void;
 }
 
 export interface AppSettingsDeps {
@@ -74,6 +81,9 @@ export function createAppSettingsStore(
     },
     setAppLocale(locale) {
       write({ ...read(), appLocale: locale });
+    },
+    setReadingTheme(theme) {
+      write({ ...read(), readingTheme: theme });
     },
   };
 }

@@ -33,7 +33,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   text: string;
 }) {
   return (
-    <div className="text-body leading-relaxed">
+    <div className="reading-surface text-body leading-relaxed">
       <Markdown
         remarkPlugins={REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}

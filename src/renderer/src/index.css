@@ -433,6 +433,45 @@
   --terminal-well-background: #ffffff;
 }
 
+/* ---- Typora-style reading themes (transcript + markdown preview) ----
+   Scoped by `data-reading-theme` on <html> (mirrored from $readingTheme in
+   appearance-store) AND the .reading-surface class on the markdown wrapper,
+   so app chrome is untouched — only the reading surfaces restyle.
+   `default` = the app's own look (no rules needed). */
+
+/* GitHub-Light: github.com's doc palette (Typora "github" theme). */
+:root[data-reading-theme="github"] .reading-surface {
+  /* Explicit canvas: GitHub-Light is a light page even when the app chrome
+     stays dark — the reading surfaces opt out of the surrounding theme. */
+  background-color: #ffffff;
+  color: #1f2328;
+  --color-fg: #1f2328;
+  --color-fg-muted: #59636e;
+  --color-fg-faint: #818b98;
+  --color-primary: #0969da;
+  --ui-red: #cf222e;
+  --ui-green: #1a7f37;
+  --ui-cyan: #0969da;
+  --color-well: #f6f8fa;
+  --color-ink-900: #ffffff;
+  --color-ink-850: #eaeef2;
+  --color-ink-800: #d1d9e0;
+  --color-ink-750: #afb8c1;
+  --color-ink-700: #8c959f;
+  --color-ink-600: #6e7781;
+  --color-ink-950: #ffffff;
+  --color-ink-940: #f6f8fa;
+  --markdown-blockquote-border: #d1d9e0;
+  --markdown-table-row-alt: #f6f8fa;
+  --markdown-table-border: #d1d9e0;
+  --markdown-code-bg: #f6f8fa;
+  --markdown-hr: #d1d9e0;
+  --markdown-link: #0969da;
+  background-color: #ffffff;
+  color: #1f2328;
+  border-radius: 6px;
+}
+
 html,
 body,
 #root {

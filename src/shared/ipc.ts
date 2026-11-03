@@ -108,6 +108,8 @@ export const IPC = {
   appearanceSetAppTheme: "appearance:setAppTheme",
   appearanceGetTerminalTheme: "appearance:getTerminalTheme",
   appearanceSetTerminalTheme: "appearance:setTerminalTheme",
+  appearanceGetReadingTheme: "appearance:getReadingTheme",
+  appearanceSetReadingTheme: "appearance:setReadingTheme",
   appearanceGetLocale: "appearance:getLocale",
   appearanceSetLocale: "appearance:setLocale",
   statuslineGetStatus: "statusline:getStatus",
@@ -397,6 +399,11 @@ export interface IpcApi {
   getTerminalTheme(): Promise<"dark" | "light">;
   /** Persist the terminal theme. */
   setTerminalTheme(theme: "dark" | "light"): Promise<void>;
+  /** The reading surfaces' Typora-style theme (transcript + markdown preview);
+   *  missing preference reads as "default" (the app's built-in look). */
+  getReadingTheme(): Promise<"default" | "github">;
+  /** Persist the reading theme. */
+  setReadingTheme(theme: "default" | "github"): Promise<void>;
   /** The app's display language (missing or invalid preference reads as "en" —
    *  the handler runs normalizeLocale, so the renderer never sees a raw value). */
   getLocale(): Promise<Locale>;

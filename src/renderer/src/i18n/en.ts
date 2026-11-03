@@ -43,6 +43,11 @@ export const en = {
       languageDesc: "The app's display language",
       appTheme: "App theme",
       appThemeDesc: "The panels, sidebar, and settings",
+      readingTheme: "Reading theme",
+      readingThemeDesc:
+        "Typora-style theme for transcripts and Markdown previews",
+      readingDefault: "Default",
+      readingGithub: "GitHub White",
       terminalTheme: "Terminal theme",
       terminalThemeDesc:
         "The interactive shell and the observed session terminal",
