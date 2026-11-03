@@ -298,7 +298,7 @@ describe("createFileIoService — write (atomic temp+rename)", () => {
       message: "permission denied",
     });
     expect(fake.state.renames).toHaveLength(0);
-    expect(fake.state.files.get("/notes/target.md")?.toString()).toBe(
+    expect(fake.state.files.get(at("/notes/target.md"))?.toString()).toBe(
       "original",
     );
   });
@@ -309,7 +309,7 @@ describe("createFileIoService — write (atomic temp+rename)", () => {
     await expect(
       service.write("/notes/truncate.md", ""),
     ).resolves.toMatchObject({ ok: true });
-    expect(fake.state.files.get("/notes/truncate.md")?.toString()).toBe("");
+    expect(fake.state.files.get(at("/notes/truncate.md"))?.toString()).toBe("");
   });
 
   it("refuses to write inside the app data dirs (protects index.db/analytics.db)", async () => {
