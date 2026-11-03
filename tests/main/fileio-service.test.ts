@@ -321,7 +321,7 @@ describe("createFileIoService — write (atomic temp+rename)", () => {
       ok: false,
       errorKind: "forbidden-path",
     });
-    expect(fake.state.files.get(`${DATA_DIR}/index.db`)?.toString()).toBe(
+    expect(fake.state.files.get(at(`${DATA_DIR}/index.db`))?.toString()).toBe(
       "keep",
     );
   });
