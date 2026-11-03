@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#F6F7F4"/>
-      <stop offset="1" stop-color="#E9EBE6"/>
+      <stop offset="0" stop-color="#FAFBF8"/>
+      <stop offset="1" stop-color="#E8EBE3"/>
     </linearGradient>
     <clipPath id="tileClip">
       <rect x="100" y="100" width="824" height="824" rx="184"/>
@@ -10,20 +10,13 @@
   </defs>
   <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>
   <g clip-path="url(#tileClip)">
-    <!-- Aerie mark: three concentric nest arcs rising to a perch point.
-         Minimal single-hairline geometry, one soft accent dot for the bird. -->
-    <g fill="none" stroke="#3C4043" stroke-linecap="round">
-      <!-- outer nest arc -->
-      <path d="M 340 640 A 210 210 0 0 1 684 640" stroke-width="26"/>
-      <!-- middle nest arc -->
-      <path d="M 396 566 A 150 150 0 0 1 628 566" stroke-width="26"/>
-      <!-- perch stem -->
-      <path d="M 512 566 L 512 452" stroke-width="26"/>
+    <g stroke="#1F6F4A" stroke-linecap="round" fill="none">
+      <path d="M 300 672 A 212 212 0 0 1 724 672" stroke-width="44"/>
+      <path d="M 372 584 A 140 140 0 0 1 652 584" stroke-width="44"/>
+      <path d="M 512 588 L 512 444" stroke-width="44"/>
     </g>
-    <!-- the bird: single accent dot perched at the apex -->
-    <circle cx="512" cy="404" r="44" fill="#3C4043"/>
-    <!-- soft horizon echo -->
-    <path d="M 340 700 L 684 700" stroke="#3C4043" stroke-opacity="0.22" stroke-width="12" stroke-linecap="round" fill="none"/>
+    <circle cx="512" cy="392" r="46" fill="#1F6F4A"/>
+    <path d="M 300 736 L 724 736" stroke="#1F6F4A" stroke-opacity="0.25" stroke-width="16" stroke-linecap="round" fill="none"/>
   </g>
   <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="3"/>
 </svg>
