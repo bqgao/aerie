@@ -291,6 +291,12 @@ export const en = {
       unpinProject: "Unpin project",
       hideProject: "Hide project",
       unhideProject: "Unhide project",
+      deleteProject: "Delete project records",
+      deleteProjectTitleLive: "Live sessions can't be deleted. End them first.",
+      deleteProjectConfirmTitle: "Delete project records?",
+      deleteProjectConfirmBody: (label: string, count: number): string =>
+        `Removes ${count === 1 ? "1 ended session" : `${count} ended sessions`} in “${label}” from every list. The transcript files stay on disk; a session resumed later from the CLI reappears.`,
+      deleteProjectConfirmLabel: "Delete records",
       hiddenLabel: "Hidden",
       noHiddenProjects: "No hidden projects.",
       projectActions: "Project actions",
@@ -401,6 +407,13 @@ export const en = {
       endTitleLive: "End this session",
       endTitleUnavailable:
         "End is only available for a live session you manage.",
+      delete: "Delete",
+      deleteTitleLive:
+        "Delete is only available for an ended session — end it first.",
+      deleteConfirmTitle: "Delete this session?",
+      deleteConfirmBody: (title: string) =>
+        `“${title}” will be removed from the session list and search. The transcript file stays on disk; a session resumed from the CLI later reappears automatically.`,
+      deleteConfirmLabel: "Delete",
       comingSoonForAgent: (label: string) =>
         `Coming soon for ${label} sessions.`,
     },

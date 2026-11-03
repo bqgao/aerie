@@ -257,6 +257,12 @@ export const zh: Translations = {
       unpinProject: "取消置顶项目",
       hideProject: "隐藏项目",
       unhideProject: "取消隐藏项目",
+      deleteProject: "删除项目记录",
+      deleteProjectTitleLive: "有会话仍在运行，无法删除。请先结束它们。",
+      deleteProjectConfirmTitle: "删除项目记录？",
+      deleteProjectConfirmBody: (label: string, count: number): string =>
+        `将从所有列表移除「${label}」中 ${count} 个已结束的会话。转录文件仍保留在磁盘上；之后从 CLI 恢复的会话会重新出现。`,
+      deleteProjectConfirmLabel: "删除记录",
       hiddenLabel: "已隐藏",
       noHiddenProjects: "没有隐藏项目。",
       projectActions: "项目操作",
@@ -354,6 +360,12 @@ export const zh: Translations = {
       forkTitleNoConversation: "无内容可复刻 — 该会话没有已保存的对话记录。",
       endTitleLive: "结束此会话",
       endTitleUnavailable: "仅当会话处于本应用管理的活跃状态时才能结束。",
+      delete: "删除",
+      deleteTitleLive: "仅已结束的会话才能删除 — 请先结束会话。",
+      deleteConfirmTitle: "删除此会话？",
+      deleteConfirmBody: (title: string) =>
+        `“${title}”将从会话列表和搜索中移除。记录文件仍保留在磁盘上；之后从 CLI 恢复该会话时会自动重新出现。`,
+      deleteConfirmLabel: "删除",
       comingSoonForAgent: (label: string) => `${label} 会话即将支持。`,
     },
     newSession: {

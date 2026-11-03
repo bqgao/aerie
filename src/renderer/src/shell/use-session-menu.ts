@@ -27,6 +27,10 @@ const EXPORT_FAILED_MESSAGE = "Export failed.";
 const EXPORT_TOO_LARGE_MESSAGE = "Transcript too large to export.";
 
 export const MENU_WIDTH = 176;
+/** Worst-case dropdown height (the full item stack + separators + padding). Used to clamp the
+ *  open position vertically so a menu opened low in the sidebar can't run past the window
+ *  bottom — combined with the dropdown's own max-height + scroll, every item stays reachable. */
+export const MENU_HEIGHT_ESTIMATE = 440;
 
 export interface SessionRenameField {
   value: string;
@@ -80,6 +84,16 @@ export interface SessionMenuController {
   /** Parked prompt count for this session + the in-band clear op (the menu's clear item). */
   queuedCount: number;
   clearQueued: () => void;
+  /** Delete-record confirm (B-side): the menu's Delete item opens a modal instead of firing
+   *  immediately, since dismissal hides the transcript from every list surface. */
+  deleteOpen: boolean;
+  openDelete: () => void;
+  closeDelete: () => void;
+  /** Runs the confirmed dismissal (single id — the array shape matches the IPC surface). */
+  requestDelete: () => void;
+  /** Only ended sessions can be deleted; a live one must be ended first. */
+  deleteDisabled: boolean;
+  deleteTitle: string | undefined;
 }
 
 /** The Resume/Fork/End/Rename/Open-in state machine shared by every trigger that opens a session's
@@ -96,6 +110,7 @@ export function useSessionMenu(
     onEnd: (id: string) => void;
     onRename: (id: string, title: string | null) => void;
     onTogglePin: (id: string, pinned: boolean) => void;
+    onDeleteSessions: (ids: string[]) => void;
   },
 ): SessionMenuController {
   const { t } = useI18n();
@@ -107,6 +122,7 @@ export function useSessionMenu(
   const [editing, setEditing] = useState(false);
   const [diagnosticOpen, setDiagnosticOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [draft, setDraft] = useState(session.title);
   const [openInBusy, setOpenInBusy] = useState(false);
   const [openInError, setOpenInError] = useState<string | null>(null);
@@ -150,21 +166,32 @@ export function useSessionMenu(
   });
 
   // The dropdown is portaled to `document.body` (its trigger may sit somewhere overflow-clipped), so its
-  // position has to be computed from the trigger's live rect rather than left to CSS.
+  // position has to be computed from the trigger's live rect rather than left to CSS. Vertically the
+  // menu is clamped so its bottom edge stays inside the window — the sidebar trigger often sits near
+  // the window bottom, and an unclamped menu there puts its lower items out of reach (2026-11 fix).
   const place = useCallback(() => {
     const r = rootRef.current?.getBoundingClientRect();
     if (!r) return;
     const left = Math.min(r.left, window.innerWidth - MENU_WIDTH - 8);
-    setPos({ left, top: r.bottom + 6 });
+    const top = Math.max(
+      8,
+      Math.min(r.bottom + 6, window.innerHeight - MENU_HEIGHT_ESTIMATE - 8),
+    );
+    setPos({ left, top });
   }, []);
 
   // Opens the menu fixed at an explicit viewport position (a right-click's clientX/clientY)
   // instead of anchored under `rootRef`. Clamped horizontally the same way `place()` clamps the
-  // trigger-anchored case; always opens rather than toggling, so a second right-click elsewhere
-  // while the menu is already open just repositions it.
+  // trigger-anchored case, and vertically the same way too — a right-click near the window
+  // bottom must not strand the menu's tail items off-screen. Always opens rather than toggling,
+  // so a second right-click elsewhere while the menu is already open just repositions it.
   function openAt(x: number, y: number): void {
-    const left = Math.min(x, window.innerWidth - MENU_WIDTH - 8);
-    setPos({ left, top: y });
+    const left = Math.min(Math.max(8, x), window.innerWidth - MENU_WIDTH - 8);
+    const top = Math.max(
+      8,
+      Math.min(y, window.innerHeight - MENU_HEIGHT_ESTIMATE - 8),
+    );
+    setPos({ left, top });
     setAnchoredToTrigger(false);
     setOpen(true);
   }
@@ -240,6 +267,12 @@ export function useSessionMenu(
   function openQueue(): void {
     setOpen(false);
     setQueueOpen(true);
+  }
+  // Delete-record confirm follows the diagnostic/queue pattern: close the dropdown, open the
+  // modal. The modal's confirm (`requestDelete`) is the only path that fires the IPC.
+  function openDelete(): void {
+    setOpen(false);
+    setDeleteOpen(true);
   }
   useEffect(() => {
     if (diagnosticOpen) return;
@@ -366,6 +399,15 @@ export function useSessionMenu(
     ? t.shell.sessionMenu.endTitleLive
     : t.shell.sessionMenu.endTitleUnavailable;
 
+  // Deletion gates on the ended state: a session that still has a live CLI process must be ended
+  // first — deleting the row under a running process would leave the process recording turns no
+  // list can see again (they'd resurrect on the next mtime-moving write anyway, per the sync-side
+  // revive rule, so refusing here is honest rather than magical).
+  const deleteDisabled = session.state !== "ended";
+  const deleteTitle = deleteDisabled
+    ? t.shell.sessionMenu.deleteTitleLive
+    : undefined;
+
   return {
     exportMarkdown,
     exportBusy,
@@ -423,5 +465,14 @@ export function useSessionMenu(
       clearPromptsFor(session.id);
       setOpen(false);
     },
+    deleteOpen,
+    openDelete,
+    closeDelete: () => setDeleteOpen(false),
+    requestDelete: () => {
+      setDeleteOpen(false);
+      callbacks.onDeleteSessions([session.id]);
+    },
+    deleteDisabled,
+    deleteTitle,
   };
 }

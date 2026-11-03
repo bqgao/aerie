@@ -54,6 +54,7 @@ const api: AppApi = {
     ipcRenderer.invoke(IPC.launchPresetsSet, presets),
   setProjectPlacement: (key, placement) =>
     ipcRenderer.invoke(IPC.setProjectPlacement, key, placement),
+  deleteSessions: (ids) => ipcRenderer.invoke(IPC.deleteSessions, ids),
   // Transcript docs cross IPC in wire form (one JSON string) so main only relays a memcpy-cheap
   // string; the parse back into a doc happens here, on the renderer's own thread, where it lands.
   readTranscript: async (id, sinceMtimeMs) =>

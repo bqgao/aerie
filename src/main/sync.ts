@@ -1,7 +1,13 @@
 import type { PersistedSession } from "@shared/types";
 import type { Provider } from "./provider/types";
 import { transaction, type SqliteDb } from "./db/driver";
-import { getPersisted, upsertSessions, pruneSessions } from "./db/store";
+import {
+  getPersisted,
+  upsertSessions,
+  pruneSessions,
+  readDismissedSessions,
+  undismissSessions,
+} from "./db/store";
 
 export interface SyncResult {
   /** Ids whose transcript was (re)parsed this pass. */
@@ -23,7 +29,21 @@ export async function syncSessions(
   provider: Provider,
 ): Promise<SyncResult> {
   const stored = new Map(getPersisted(db).map((s) => [s.id, s]));
-  const candidates = await provider.listCandidates();
+  const dismissed = readDismissedSessions(db);
+  // A dismissed session stays hidden — UNLESS its transcript woke back up after dismissal (the
+  // user resumed it from the CLI). Live-again work must reappear, so the tombstone flips back
+  // off and the row re-enters the index like any other candidate.
+  const revivedIds: string[] = [];
+  const candidates = (await provider.listCandidates()).filter((c) => {
+    const dismissedAt = dismissed.get(c.id);
+    if (dismissedAt === undefined) return true;
+    if (c.transcriptMtimeMs > dismissedAt) {
+      revivedIds.push(c.id);
+      return true;
+    }
+    return false;
+  });
+  undismissSessions(db, revivedIds);
 
   const snapshots: PersistedSession[] = [];
   const parsedIds: string[] = [];

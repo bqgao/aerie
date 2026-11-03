@@ -36,6 +36,7 @@ export function ChatComposer({
   onEnd,
   onRename,
   onTogglePin,
+  onDeleteSessions,
 }: {
   session: Session;
   /** Whether the agent CLI is usable; threaded to useSessionMenu exactly like SessionMenu. */
@@ -45,6 +46,7 @@ export function ChatComposer({
   onEnd: (id: string) => void;
   onRename: (id: string, title: string | null) => void;
   onTogglePin: (id: string, pinned: boolean) => void;
+  onDeleteSessions: (ids: string[]) => void;
 }) {
   const { t } = useI18n();
   const caps = AGENTS[session.agent].capabilities;
@@ -59,6 +61,7 @@ export function ChatComposer({
       onEnd,
       onRename,
       onTogglePin,
+      onDeleteSessions,
     },
   );
   const [draft, setDraft] = useState("");

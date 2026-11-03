@@ -76,7 +76,10 @@ import {
   readIndexDbCounts,
   readSessionOrigins,
   readSessionTitles,
+  dismissSessions,
+  readDismissedSessions,
 } from "./db/store";
+import { deleteSearchDocsForSessions } from "./db/search";
 import {
   readTotals,
   readBreakdowns,
@@ -831,6 +834,38 @@ export function registerIpc({
       return overviewNow();
     },
   );
+  ipcMain.handle(IPC.deleteSessions, (_e, ids?: string[]) => {
+    // Validate before touching either store: only non-empty strings pass, de-duplicated so a
+    // repeated id can't double-run statements. An absent/garbage payload is a no-op.
+    const valid =
+      ids === undefined
+        ? []
+        : [
+            ...new Set(
+              ids.filter((id) => typeof id === "string" && id.trim() !== ""),
+            ),
+          ];
+    if (valid.length === 0) {
+      logError(
+        "sessions-delete-empty-ids",
+        "deleteSessions rejected empty/invalid id list",
+      );
+      return overviewNow();
+    }
+    try {
+      dismissSessions(db, valid);
+      // Purge the search half only when that store is wired: the sidebar row dies either way,
+      // and the scan-side dismissed filter keeps a missing search purge from ever re-indexing.
+      if (searchDb) deleteSearchDocsForSessions(searchDb, valid);
+    } catch (err) {
+      logError(
+        "sessions-delete-failed",
+        "deleteSessions failed; serving unchanged overview",
+        err,
+      );
+    }
+    return overviewNow();
+  });
   ipcMain.handle(IPC.modelDefaults, () => readDefaults());
   ipcMain.handle(IPC.recheckCli, (_e, agent?: string) =>
     cli.recheck(agentOrDefault(agent)),
@@ -1441,6 +1476,9 @@ export function registerIpc({
   const searchStep = (): SearchProgress => {
     if (!searchDb) return emptySearchProgress();
     try {
+      // One tombstone read per step: the dismissed set is tiny (a PK-scanned table of ids), and
+      // the scan needs it both to skip dismissed transcripts and to sweep their stored rows.
+      const dismissed = readDismissedSessions(db);
       return searchScanStep(searchDb, {
         claudeDir,
         codexDir,
@@ -1454,6 +1492,7 @@ export function registerIpc({
             return null;
           }
         },
+        isSessionDismissed: (sessionId) => dismissed.has(sessionId),
       });
     } catch (err) {
       logError(

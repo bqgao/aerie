@@ -65,6 +65,11 @@ export interface SearchScanOptions {
   maxBytesPerStep?: number;
   /** opencode rows consumed per step (≤2000 per spec). */
   ocChunkSize?: number;
+  /** The sidebar-dismissed (tombstoned) session filter: dismissed sessions' transcripts are
+   *  skipped here AND their previously indexed rows get swept (file sources: the walk no longer
+   * lists them, so the deletion sweep drops their cursors; opencode: rows are filtered out
+   * before indexing). Keeps a deleted-from-the-list session out of the search pane forever. */
+  isSessionDismissed?: (sessionId: string) => boolean;
 }
 
 const DEFAULT_MAX_BYTES_PER_STEP = 2_000_000;
@@ -90,6 +95,7 @@ export function searchScanStep(
       "claude",
       options.collectClaudeTargets,
       budget,
+      options.isSessionDismissed,
     );
     budget = r.remainingBudget;
     filesTotal += r.filesTotal;
@@ -104,6 +110,7 @@ export function searchScanStep(
       "codex",
       options.collectCodexTargets,
       budget, // the remainder after the claude leg
+      options.isSessionDismissed,
     );
     filesTotal += r.filesTotal;
     filesDone += r.filesDone;
@@ -116,6 +123,7 @@ export function searchScanStep(
       options.opencodeDbPath,
       options.openReadonly,
       options.ocChunkSize ?? DEFAULT_OC_CHUNK_SIZE,
+      options.isSessionDismissed,
     );
     filesTotal += 1;
     if (r.caughtUp) filesDone += 1;
@@ -148,11 +156,16 @@ function scanFileAgent(
   agent: AgentId,
   collect: (dir: string) => SearchScanTarget[],
   stepBudget: number,
+  isSessionDismissed?: (sessionId: string) => boolean,
 ): FileAgentStepResult {
   let targets: SearchScanTarget[] = [];
   let walkFailed = false;
   try {
     targets = collect(dir);
+    // Dismissed sessions leave the walk: their files drop out of `known`, so the deletion sweep
+    // below drops their indexed rows and cursors in this very step — and they're never re-read.
+    if (isSessionDismissed)
+      targets = targets.filter((t) => !isSessionDismissed(t.sessionId));
   } catch (err) {
     walkFailed = true;
     logSoft("search-scan-walk-failed", `${agent} transcript walk failed`, err);
@@ -373,6 +386,7 @@ function scanOpencodeSource(
   dbPath: string,
   openReadonly: (path: string) => SqliteDb | null,
   chunkSize: number,
+  isSessionDismissed?: (sessionId: string) => boolean,
 ): OpencodeStepResult {
   const unavailable = (error: string, err?: unknown): OpencodeStepResult => {
     if (err) logSoft("search-opencode-source-unavailable", error, err);
@@ -445,7 +459,11 @@ function scanOpencodeSource(
 
     let wrote = false;
     const docs = rows
-      .filter((r) => r.type === "user" || r.type === "assistant")
+      .filter(
+        (r) =>
+          (r.type === "user" || r.type === "assistant") &&
+          !(isSessionDismissed && isSessionDismissed(r.sessionId)),
+      )
       .map((r) => {
         const body = extractOpencodeBody(r.data);
         if (!body) return null;

@@ -80,6 +80,7 @@ export function LeftSidebar({
   onRename,
   onTogglePin,
   onSetProjectPlacement,
+  onDeleteSessions,
   updatePending,
   route,
   onRoute,
@@ -107,6 +108,9 @@ export function LeftSidebar({
     key: string,
     placement: ProjectPlacement,
   ) => Promise<void>;
+  /** B-side delete-record: dismiss ended sessions (by id) from every list surface — the
+   *  main process tombstones them so the next sync can't re-add them. */
+  onDeleteSessions: (ids: string[]) => void;
   /** True while a software update is pending (available/downloading/downloaded) —
    *  badges the Settings gear (design spec 2026-07-09-update-dot). */
   updatePending: boolean;
@@ -339,6 +343,7 @@ export function LeftSidebar({
           onEnd={onEnd}
           onRename={onRename}
           onTogglePin={onTogglePin}
+          onDeleteSessions={onDeleteSessions}
           showAgentIcon={depth === 0 && preferences.showAgentIcons}
           depth={depth}
           descendantCount={node.descendantCount}
@@ -429,6 +434,12 @@ export function LeftSidebar({
     );
     // Counted off the filtered group, so the badge stays in step with search and the agent filter.
     const activeCount = activeSessionCount(g.sessions);
+    // Folder-level delete-record (B-side): only ended sessions can be dismissed; a live one
+    // would keep recording turns no list can see and resurrect on its next write anyway.
+    const endedIds = g.sessions
+      .filter((s) => s.state === "ended")
+      .map((s) => s.id);
+    const hasNonEnded = endedIds.length < g.sessions.length;
     return (
       <div key={g.key}>
         <ProjectGroupRow
@@ -480,6 +491,16 @@ export function LeftSidebar({
               : undefined
           }
           onSetPlacement={(next) => onSetProjectPlacement(g.key, next)}
+          deleteLabel={t.shell.sidebar.deleteProject}
+          deleteDisabled={hasNonEnded || endedIds.length === 0}
+          deleteTitle={t.shell.sidebar.deleteProjectTitleLive}
+          deleteConfirmTitle={t.shell.sidebar.deleteProjectConfirmTitle}
+          deleteConfirmBody={t.shell.sidebar.deleteProjectConfirmBody(
+            g.label,
+            endedIds.length,
+          )}
+          deleteConfirmLabel={t.shell.sidebar.deleteProjectConfirmLabel}
+          onDeleteProject={() => onDeleteSessions(endedIds)}
         />
         {!collapsed.has(g.key) && (
           <>
@@ -641,6 +662,7 @@ export function LeftSidebar({
                     onEnd={onEnd}
                     onRename={onRename}
                     onTogglePin={onTogglePin}
+                    onDeleteSessions={onDeleteSessions}
                     showReasonChip={inbox}
                     onPreviewEnter={preview.onRowEnter}
                     onPreviewLeave={preview.onRowLeave}

@@ -68,6 +68,16 @@ export function migrate(db: SqliteDb): void {
       PRAGMA user_version = ${SCHEMA_VERSION};
     `);
   }
+  // Dismissal tombstones live OUTSIDE the version gate: the sessions table is a rebuildable
+  // cache (the block above may drop and recreate it at any version bump), but a "deleted from
+  // the sidebar" choice must survive that rebuild — otherwise the next sync would resurrect
+  // every dismissed session. IF NOT EXISTS so every launch past the first is a no-op.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dismissed_sessions (
+      id TEXT PRIMARY KEY,
+      dismissed_ms INTEGER NOT NULL
+    );
+  `);
 }
 
 interface Row {
@@ -418,4 +428,41 @@ export function pruneSessions(db: SqliteDb, keepIds: string[]): void {
   db.prepare(`DELETE FROM sessions WHERE id NOT IN (${placeholders})`).run(
     ...keepIds,
   );
+}
+
+/** Id → dismissal time for every tombstoned session, so sync can filter candidates and the search
+ *  scan can skip their transcripts without either subsystem re-deriving the set. */
+export function readDismissedSessions(db: SqliteDb): Map<string, number> {
+  const rows = db
+    .prepare("SELECT id, dismissed_ms FROM dismissed_sessions")
+    .all() as { id: string; dismissed_ms: number }[];
+  return new Map(rows.map((r) => [r.id, r.dismissed_ms]));
+}
+
+/** Tombstone `ids` and drop their rows in one pass — the sidebar's "delete" verb. The transcript
+ *  stays on disk untouched; the tombstone is what keeps the next sync from re-adding the row.
+ *  Stale tombstones (transcript later reaped by cleanupPeriodDays) are a few bytes and harmless. */
+export function dismissSessions(db: SqliteDb, ids: string[]): void {
+  if (ids.length === 0) return;
+  const now = Date.now();
+  const tomb = db.prepare(
+    "INSERT OR IGNORE INTO dismissed_sessions (id, dismissed_ms) VALUES (?, ?)",
+  );
+  const drop = db.prepare("DELETE FROM sessions WHERE id = ?");
+  transaction(db, () => {
+    for (const id of ids) {
+      tomb.run(id, now);
+      drop.run(id);
+    }
+  });
+}
+
+/** Clear tombstones — sync's revive path for a dismissed session whose transcript woke back up
+ *  (resumed from the CLI after dismissal: it's live work again, not a record to stay hidden). */
+export function undismissSessions(db: SqliteDb, ids: string[]): void {
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => "?").join(",");
+  db.prepare(
+    `DELETE FROM dismissed_sessions WHERE id IN (${placeholders})`,
+  ).run(...ids);
 }

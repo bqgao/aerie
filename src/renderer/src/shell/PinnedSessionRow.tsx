@@ -36,6 +36,9 @@ export function PinnedSessionRow({
   onEnd,
   onRename,
   onTogglePin,
+  /** B-side delete-record: dismiss ended sessions from every list surface (tombstoned in the
+   *  main-process index so the next sync can't re-add them; transcript stays on disk). */
+  onDeleteSessions,
   showReasonChip = false,
   onPreviewEnter,
   onPreviewLeave,
@@ -50,6 +53,8 @@ export function PinnedSessionRow({
   onEnd: (id: string) => void;
   onRename: (id: string, title: string | null) => void;
   onTogglePin: (id: string, pinned: boolean) => void;
+  /** B-side delete-record: dismiss ended sessions from every list surface. */
+  onDeleteSessions: (ids: string[]) => void;
   /** The rail's Inbox mode (tier-1 spec Run 1 / A1): show the waiting-on-user reason chip. */
   showReasonChip?: boolean;
   /** The rail's hover preview (tier-1 spec Run 1 / A2): mouse enter/leave reporting; the
@@ -70,6 +75,7 @@ export function PinnedSessionRow({
     onEnd,
     onRename,
     onTogglePin,
+    onDeleteSessions,
   });
   // The same label the sidebar's folder uses, so the two surfaces can't disagree about what a
   // project is called.

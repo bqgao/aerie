@@ -125,6 +125,39 @@ describe("search file scan (claude/codex, byte-offset cursors)", () => {
     });
   });
 
+  it("skips dismissed sessions entirely and sweeps their stored rows", () => {
+    scratch();
+    const a = join(dir, "a.jsonl");
+    const b = join(dir, "b.jsonl");
+    writeFileSync(a, `${claudeLine("alpha line")}\n`);
+    writeFileSync(b, `${claudeLine("beta line")}\n`);
+    const db = openTestDb();
+    migrateSearch(db);
+    const all = targetsOf([
+      ["a.jsonl", "x"],
+      ["b.jsonl", "y"],
+    ]);
+    const opts = {
+      claudeDir: dir,
+      collectClaudeTargets: () => all,
+      collectCodexTargets: () => [],
+      openReadonly,
+    };
+    searchScanStep(db, opts);
+    expect(bodies(db)).toEqual(["alpha line", "beta line"]);
+
+    // Dismissed before the next step: the target is filtered out of the walk view, so the
+    // deletion sweep drops its stored docs and cursor — and a later step can't re-index it.
+    const p = searchScanStep(db, {
+      ...opts,
+      isSessionDismissed: (id) => id === "s-a.jsonl",
+    });
+    expect(p.filesTotal).toBe(1);
+    expect(bodies(db)).toEqual(["beta line"]);
+    expect(readSearchFiles(db).has(a)).toBe(false);
+    expect(readSearchFiles(db).has(b)).toBe(true);
+  });
+
   it("does not converge a file whose appended bytes carry no complete line, then picks it up", () => {
     scratch();
     const file = join(dir, "b.jsonl");

@@ -11,6 +11,9 @@ import {
   readSessionTitles,
   readSessionOrigins,
   getSessionAgent,
+  dismissSessions,
+  readDismissedSessions,
+  undismissSessions,
 } from "../../src/main/db/store";
 import { openTestDb } from "../helpers/sqlite";
 
@@ -374,5 +377,24 @@ describe("agent column", () => {
     upsertSessions(db, [{ ...snap(), id: "cx-2", agent: "codex" }]);
     expect(getSessionAgent(db, "cx-2")).toBe("codex");
     expect(getSessionAgent(db, "nope")).toBeNull();
+  });
+
+  it("dismisses sessions via a tombstone that survives an index rebuild and can be undone", () => {
+    const db = openTestDb();
+    migrate(db);
+    upsertSessions(db, [snap(), { ...snap(), id: "id-2" }]);
+
+    dismissSessions(db, ["id-1"]);
+    expect([...readDismissedSessions(db).keys()]).toEqual(["id-1"]);
+    expect(getSessions(db).map((s) => s.id)).toEqual(["id-2"]);
+
+    // A future SCHEMA_VERSION bump rebuilds the sessions cache — the tombstones must survive it
+    // (they're created outside the version gate), or every dismissed row would resurrect.
+    db.prepare("PRAGMA user_version = 0").run();
+    migrate(db);
+    expect(readDismissedSessions(db).has("id-1")).toBe(true);
+
+    undismissSessions(db, ["id-1"]);
+    expect(readDismissedSessions(db).size).toBe(0);
   });
 });

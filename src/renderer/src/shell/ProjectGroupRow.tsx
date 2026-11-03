@@ -1,5 +1,6 @@
 import { cx } from "../ui/atoms";
 import { Icon } from "../ui/icons";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import type { SessionGroup } from "./session-list-model";
 import type { ProjectPlacement } from "@shared/ipc";
 import { createPortal } from "react-dom";
@@ -30,6 +31,13 @@ export function ProjectGroupRow({
   onQuickAddMenu,
   chooseAgentHint,
   onSetPlacement,
+  deleteLabel,
+  deleteDisabled,
+  deleteTitle,
+  deleteConfirmTitle,
+  deleteConfirmBody,
+  deleteConfirmLabel,
+  onDeleteProject,
 }: {
   group: SessionGroup;
   collapsed: boolean;
@@ -59,9 +67,22 @@ export function ProjectGroupRow({
   /** Appended to the "+" tooltip while the right-click menu exists. */
   chooseAgentHint?: string;
   onSetPlacement: (placement: ProjectPlacement) => Promise<void>;
+  /** B-side delete-record: dismiss every ended session in this folder (tombstoned in the
+   *  main-process index so the next sync can't re-add them; transcripts stay on disk). */
+  deleteLabel: string;
+  /** True when the folder holds at least one non-ended session — deleting under one would
+   *  leave a live process recording turns no list can see (they'd resurrect on the next write). */
+  deleteDisabled: boolean;
+  /** Tooltip shown while deleteDisabled. */
+  deleteTitle: string;
+  deleteConfirmTitle: string;
+  deleteConfirmBody: string;
+  deleteConfirmLabel: string;
+  onDeleteProject: () => void;
 }) {
   const cwd = group.cwd;
   const [menuOpen, setMenuOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(
     null,
   );
@@ -89,7 +110,10 @@ export function ProjectGroupRow({
       placeProjectMenu(
         trigger,
         { width: window.innerWidth, height: window.innerHeight },
-        menuRef.current?.getBoundingClientRect().height ?? 280,
+        // First-open fallback before the portal has a rect: the full stack with the delete
+        // item + separators + path block lands around 330px — underestimating here pushes a
+        // near-bottom menu past the window edge, the exact bug the height input exists for.
+        menuRef.current?.getBoundingClientRect().height ?? 330,
       ),
     );
   }, []);
@@ -214,6 +238,10 @@ export function ProjectGroupRow({
                   left: menuPos.left,
                   top: menuPos.top,
                   width: PROJECT_MENU_WIDTH,
+                  // Belt-and-braces against the height estimate: a menu taller than the
+                  // window clamps and scrolls instead of running items off-screen.
+                  maxHeight: "calc(100vh - 16px)",
+                  overflowY: "auto",
                 }}
                 className="z-50 rounded-lg border border-(--ui-stroke-secondary) bg-[color-mix(in_srgb,var(--ui-bg-elevated)_96%,transparent)] p-1.5 shadow-(--shadow-md) backdrop-blur-xl"
               >
@@ -291,10 +319,47 @@ export function ProjectGroupRow({
                   <Icon name="copy" size={12} />
                   {copyPathLabel}
                 </button>
+                <div
+                  role="separator"
+                  className="mx-1 my-1 border-t border-(--ui-stroke-secondary)"
+                />
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={deleteDisabled}
+                  title={deleteDisabled ? deleteTitle : undefined}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setMenuOpen(false);
+                    setDeleteOpen(true);
+                  }}
+                  className={cx(
+                    "flex w-full items-center gap-2.5 rounded-xs px-2 py-1.5 text-left text-xs",
+                    deleteDisabled
+                      ? "cursor-not-allowed text-danger/50"
+                      : "text-danger enabled:hover:bg-danger/10",
+                  )}
+                >
+                  <Icon name="trash" size={12} />
+                  {deleteLabel}
+                </button>
               </div>,
               document.body,
             )}
         </div>
+      )}
+      {deleteOpen && (
+        <ConfirmDialog
+          title={deleteConfirmTitle}
+          body={deleteConfirmBody}
+          confirmLabel={deleteConfirmLabel}
+          tone="danger"
+          onCancel={() => setDeleteOpen(false)}
+          onConfirm={() => {
+            setDeleteOpen(false);
+            onDeleteProject();
+          }}
+        />
       )}
     </div>
   );

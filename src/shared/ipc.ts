@@ -97,6 +97,7 @@ export const IPC = {
   /** Tier-1 Run 2 / A4: deliver one queued prompt to an opencode session's service API. */
   opencodePrompt: "opencode:prompt",
   setProjectPlacement: "project:setPlacement",
+  deleteSessions: "sessions:delete",
   getToolResult: "toolResult:get",
   updateGetState: "update:getState",
   updateCheck: "update:check",
@@ -369,6 +370,13 @@ export interface IpcApi {
     key: string,
     placement: ProjectPlacement,
   ): Promise<OverviewData>;
+  /** Dismiss sessions from the sidebar: tombstones each id (so the next sync can't re-add it),
+   *  drops the rows, and purges their indexed search documents, then returns the fresh overview.
+   *  The transcript files stay on disk untouched. A dismissed session whose transcript later
+   *  wakes back up (resumed from the CLI) re-enters the index on the next sync.
+   *  Invalid input (empty/non-string ids) is ignored; never rejects — on failure the unchanged
+   *  overview is served. */
+  deleteSessions(ids: string[]): Promise<OverviewData>;
   /** Fetch one tool call's full command + output on demand (the tool turn's detail modal). Not polled;
    *  a one-shot read keyed by the tool_use id. `agentId` reads the call from that subagent's own
    *  transcript file instead of the session transcript (the drilled Subagent view). */

@@ -54,6 +54,12 @@ export function SessionMenuDropdown({
     canPrompt,
     queuedCount,
     clearQueued,
+    deleteOpen,
+    openDelete,
+    closeDelete,
+    requestDelete,
+    deleteDisabled,
+    deleteTitle,
   } = menu;
   const { t } = useI18n();
 
@@ -70,6 +76,11 @@ export function SessionMenuDropdown({
                 left: pos.left,
                 top: pos.top,
                 width: MENU_WIDTH,
+                // The full stack is taller than some windows are tall — clamp and scroll so the
+                // lower items (Delete, Open-in) stay reachable when the menu opens low (2026-11
+                // fix; `useSessionMenu.place()` pre-clamps the position, this covers the rest).
+                maxHeight: "calc(100vh - 16px)",
+                overflowY: "auto",
               }}
               className="z-50 rounded-lg border border-(--ui-stroke-secondary) bg-[color-mix(in_srgb,var(--ui-bg-elevated)_96%,transparent)] p-1.5 shadow-(--shadow-md) backdrop-blur-xl"
             >
@@ -180,6 +191,18 @@ export function SessionMenuDropdown({
                 danger
               />
 
+              <MenuItem
+                // B-side delete-record: hides this session from every list surface (tombstoned
+                // so the next sync can't re-add it; transcript stays on disk). Ended sessions
+                // only — a live one must be ended first, same shape as the End item's gating.
+                icon="trash"
+                label={t.shell.sessionMenu.delete}
+                onClick={openDelete}
+                disabled={deleteDisabled}
+                title={deleteTitle}
+                danger
+              />
+
               <div
                 role="separator"
                 aria-orientation="horizontal"
@@ -234,6 +257,18 @@ export function SessionMenuDropdown({
           tone="danger"
           onConfirm={end.confirmYes}
           onCancel={end.confirmNo}
+        />
+      )}
+      {deleteOpen && (
+        <ConfirmDialog
+          title={t.shell.sessionMenu.deleteConfirmTitle}
+          body={t.shell.sessionMenu.deleteConfirmBody(
+            session.title || session.id,
+          )}
+          confirmLabel={t.shell.sessionMenu.deleteConfirmLabel}
+          tone="danger"
+          onConfirm={requestDelete}
+          onCancel={closeDelete}
         />
       )}
       {diagnosticOpen && (

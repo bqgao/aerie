@@ -43,6 +43,7 @@ export function Workspace({
   onEnd,
   onRename,
   onTogglePin,
+  onDeleteSessions,
   leftEdgeExposed,
   rightEdgeExposed,
 }: {
@@ -57,6 +58,8 @@ export function Workspace({
   onRename: (id: string, title: string | null) => void;
   /** Persist (or clear) the pin mark for this session. Applies to any session. */
   onTogglePin: (id: string, pinned: boolean) => void;
+  /** B-side delete-record: dismiss ended sessions from every list surface. */
+  onDeleteSessions: (ids: string[]) => void;
   /** Whether the left pane isn't actually docked next to the header — reserves the cluster inset. */
   leftEdgeExposed: boolean;
   /** Whether the right pane isn't docked — the header clears the fixed right toggle cluster. */
@@ -111,6 +114,7 @@ export function Workspace({
             onEnd={onEnd}
             onRename={onRename}
             onTogglePin={onTogglePin}
+            onDeleteSessions={onDeleteSessions}
           />
         }
       />
@@ -141,6 +145,7 @@ export function Workspace({
         onEnd={onEnd}
         onRename={onRename}
         onTogglePin={onTogglePin}
+        onDeleteSessions={onDeleteSessions}
       />
     </div>
   );

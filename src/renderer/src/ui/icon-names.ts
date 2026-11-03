@@ -69,6 +69,7 @@ export type IconName =
   | "terminal"
   | "timer"
   | "triangle-alert"
+  | "trash"
   | "worktree"
   | "x"
   | "zap";

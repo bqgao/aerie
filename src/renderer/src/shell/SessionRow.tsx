@@ -46,6 +46,9 @@ export function SessionRow({
   onEnd,
   onRename,
   onTogglePin,
+  /** B-side delete-record: dismiss ended sessions from every list surface (tombstoned in the
+   *  main-process index so the next sync can't re-add them; transcript stays on disk). */
+  onDeleteSessions,
   showAgentIcon = true,
   depth = 0,
   descendantCount = 0,
@@ -66,6 +69,8 @@ export function SessionRow({
   onEnd: (id: string) => void;
   onRename: (id: string, title: string | null) => void;
   onTogglePin: (id: string, pinned: boolean) => void;
+  /** B-side delete-record: dismiss ended sessions from every list surface. */
+  onDeleteSessions: (ids: string[]) => void;
   showAgentIcon?: boolean;
   depth?: number;
   descendantCount?: number;
@@ -113,6 +118,7 @@ export function SessionRow({
     onEnd,
     onRename,
     onTogglePin,
+    onDeleteSessions,
   });
   const hasChildren = descendantCount > 0 && onToggleChildren !== undefined;
   const cappedDepth = Math.min(depth, 2);

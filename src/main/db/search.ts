@@ -127,6 +127,47 @@ export function dropSearchDocsByPrefix(db: SqliteDb, prefix: string): void {
   });
 }
 
+/** Purge every indexed document belonging to `sessionIds` — the search half of the sidebar's
+ *  delete verb, so a dismissed session vanishes from the search pane too. Two row shapes:
+ *  claude/codex transcripts resolve through the files cursor table (path → docids); opencode
+ *  message docs (`opencode:<messageId>` paths, no files row) are found straight off the FTS
+ *  row's sessionId carrier. One transaction; empty batches are a no-op. The scan-side dismissed
+ *  filter keeps future steps from re-indexing the same transcripts. */
+export function deleteSearchDocsForSessions(
+  db: SqliteDb,
+  sessionIds: string[],
+): void {
+  if (sessionIds.length === 0) return;
+  const placeholders = sessionIds.map(() => "?").join(",");
+  transaction(db, () => {
+    const paths = (
+      db
+        .prepare(`SELECT path FROM files WHERE sessionId IN (${placeholders})`)
+        .all(...sessionIds) as { path: string }[]
+    ).map((r) => r.path);
+    for (const p of paths) {
+      db.prepare(
+        "DELETE FROM fts WHERE rowid IN (SELECT docid FROM docs WHERE path = ?)",
+      ).run(p);
+      db.prepare("DELETE FROM docs WHERE path = ?").run(p);
+    }
+    db.prepare(`DELETE FROM files WHERE sessionId IN (${placeholders})`).run(
+      ...sessionIds,
+    );
+    const docids = (
+      db
+        .prepare(
+          `SELECT rowid AS docid FROM fts WHERE sessionId IN (${placeholders})`,
+        )
+        .all(...sessionIds) as { docid: number }[]
+    ).map((r) => r.docid);
+    for (const docid of docids) {
+      db.prepare("DELETE FROM fts WHERE rowid = ?").run(docid);
+      db.prepare("DELETE FROM docs WHERE docid = ?").run(docid);
+    }
+  });
+}
+
 /** A stored claude/codex append cursor: the file's last-seen mtime plus the byte offset past the
  *  last consumed complete line. */
 export interface SearchFileCursor {

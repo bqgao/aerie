@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deleteSearchDocsForPath,
+  deleteSearchDocsForSessions,
   dropSearchFile,
   insertSearchDocs,
   migrateSearch,
@@ -69,6 +70,40 @@ describe("search store", () => {
       c: number;
     }[];
     expect(docs[0].c).toBe(1);
+  });
+
+  it("deletes every indexed document of a session by id, leaving other sessions intact", () => {
+    const db = setup();
+    insertSearchDocs(db, [
+      doc(),
+      doc({ path: "/t/a2.jsonl", body: "second chunk of s1" }),
+      doc({ path: "/t/b.jsonl", sessionId: "s2" }),
+    ]);
+    upsertSearchFile(db, {
+      path: "/t/a.jsonl",
+      agent: "claude",
+      sessionId: "s1",
+      title: "T",
+      mtime: 5,
+      offset: 10,
+    });
+    upsertSearchFile(db, {
+      path: "/t/b.jsonl",
+      agent: "claude",
+      sessionId: "s2",
+      title: "T",
+      mtime: 5,
+      offset: 10,
+    });
+
+    deleteSearchDocsForSessions(db, ["s1"]);
+    const left = db.prepare("SELECT DISTINCT sessionId FROM fts").all() as {
+      sessionId: string;
+    }[];
+    expect(left).toEqual([{ sessionId: "s2" }]);
+    // Cursors ride along, so a later sweep can't re-index the dismissed session's files.
+    expect(readSearchFiles(db).has("/t/a.jsonl")).toBe(false);
+    expect(readSearchFiles(db).has("/t/b.jsonl")).toBe(true);
   });
 
   it("keeps an append cursor per file and forgets it on drop", () => {

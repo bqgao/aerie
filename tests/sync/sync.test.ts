@@ -2,7 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import type { PersistedSession, SessionCandidate } from "@shared/types";
 import type { Provider } from "../../src/main/provider/types";
 import { syncSessions } from "../../src/main/sync";
-import { migrate, getPersisted, getSessions } from "../../src/main/db/store";
+import {
+  migrate,
+  getPersisted,
+  getSessions,
+  dismissSessions,
+  readDismissedSessions,
+} from "../../src/main/db/store";
 import { openTestDb } from "../helpers/sqlite";
 
 const cand = (
@@ -156,6 +162,46 @@ describe("syncSessions", () => {
     const r = await syncSessions(db, provider);
     expect(r.parsedIds).toEqual([]); // no transcript → not a parse
     expect(getSessions(db).map((s) => s.id)).toEqual(["skel"]);
+  });
+
+  it("hides a dismissed session from the index and keeps it out on later passes", async () => {
+    const db = openTestDb();
+    migrate(db);
+    await syncSessions(db, fakeProvider([cand("a"), cand("b")]).provider);
+
+    // Delete-record: tombstone + drop the row (the IPC handler does both).
+    dismissSessions(db, ["a"]);
+    expect(
+      getSessions(db)
+        .map((s) => s.id)
+        .sort(),
+    ).toEqual(["b"]);
+
+    // The provider still lists it (the transcript never left disk) — the tombstone keeps it out.
+    const r = await syncSessions(
+      db,
+      fakeProvider([cand("a"), cand("b")]).provider,
+    );
+    expect(r.parsedIds).toEqual([]);
+    expect(getSessions(db).map((s) => s.id)).toEqual(["b"]);
+  });
+
+  it("revives a dismissed session whose transcript woke up after the dismissal", async () => {
+    const db = openTestDb();
+    migrate(db);
+    await syncSessions(db, fakeProvider([cand("a")]).provider);
+    dismissSessions(db, ["a"]);
+    expect(getSessions(db)).toEqual([]);
+
+    // Resumed from the CLI: the transcript's mtime advanced past the tombstone's stamp.
+    const r = await syncSessions(
+      db,
+      fakeProvider([cand("a", { transcriptMtimeMs: Date.now() + 60_000 })])
+        .provider,
+    );
+    expect(r.parsedIds).toEqual(["a"]);
+    expect(getSessions(db).map((s) => s.id)).toEqual(["a"]);
+    expect(readDismissedSessions(db).has("a")).toBe(false);
   });
 
   it("rolls back the upsert when pruning fails mid-pass, leaving the prior index intact", async () => {

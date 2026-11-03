@@ -19,6 +19,7 @@ export function SessionMenu({
   onEnd,
   onRename,
   onTogglePin,
+  onDeleteSessions,
 }: {
   session: Session;
   /** Whether the Claude Code CLI is usable; Resume and Fork both resume by spawning it. */
@@ -31,6 +32,8 @@ export function SessionMenu({
   onRename: (id: string, title: string | null) => void;
   /** Persist (or clear) the pin mark for this session. */
   onTogglePin: (id: string, pinned: boolean) => void;
+  /** B-side delete-record: dismiss ended sessions from every list surface. */
+  onDeleteSessions: (ids: string[]) => void;
 }) {
   const { t } = useI18n();
   const menu = useSessionMenu(session, canSpawn, {
@@ -39,6 +42,7 @@ export function SessionMenu({
     onEnd,
     onRename,
     onTogglePin,
+    onDeleteSessions,
   });
   const { open, toggleMenu, rootRef, menuId, editing, renameField } = menu;
 

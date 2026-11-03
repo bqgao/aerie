@@ -411,6 +411,19 @@ export function App() {
     }
   }
 
+  // Delete-record (B-side): dismiss ended sessions from every list surface. The main process
+  // tombstones the ids so the next sync can't re-add them and purges their search rows; the
+  // transcripts stay on disk. If the open session was among them, fall back to nothing selected —
+  // the transcript view's own empty state takes over (its read route tolerates a missing id).
+  async function deleteSessions(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const overview = await window.api.deleteSessions(ids);
+    applyOverview(overview);
+    setSelectedId((current) =>
+      current && ids.includes(current) ? null : current,
+    );
+  }
+
   // Fork a session. Claude/codex go through the terminal path (resume into a fresh id under the
   // CLI); opencode forks through its service API (tier-1 Run 2 / A3): no terminal on fork v1 —
   // the forked session exists server-side already, so the optimistic draft lands, the rail
@@ -623,6 +636,7 @@ export function App() {
       onEnd={endSession}
       onRename={(id, title) => void renameSession(id, title)}
       onTogglePin={(id, pinned) => void togglePinSession(id, pinned)}
+      onDeleteSessions={(ids) => void deleteSessions(ids)}
       leftEdgeExposed={leftEdgeExposed}
       rightEdgeExposed={rightEdgeExposed}
     />
@@ -663,6 +677,7 @@ export function App() {
             onRename={(id, title) => void renameSession(id, title)}
             onTogglePin={(id, pinned) => void togglePinSession(id, pinned)}
             onSetProjectPlacement={setProjectPlacement}
+            onDeleteSessions={(ids) => void deleteSessions(ids)}
             updatePending={updatePending}
             route={route}
             onRoute={setSelectedId}
