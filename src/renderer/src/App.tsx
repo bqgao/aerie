@@ -47,7 +47,7 @@ import { NewSessionView } from "./shell/NewSessionView";
 import { MiddleHeader } from "./shell/MiddleHeader";
 import { projectPlacementMatches } from "./shell/project-placement-action";
 import { useMediaQuery, NARROW_VIEWPORT_QUERY } from "./shell/use-media-query";
-import { $paneOpen } from "./shell/panes";
+import { $paneOpen, setPaneOpen } from "./shell/panes";
 import {
   CBW_LEFT_PANE_ID,
   CBW_RIGHT_PANE_ID,
@@ -714,6 +714,7 @@ export function App() {
           minWidth="16rem"
           maxWidth="36vw"
           divider
+          onClose={() => setPaneOpen(SFTP_PANE_ID, false)}
           disabled={!sftpPaneOpen}
         >
           <SftpPane />
@@ -725,6 +726,7 @@ export function App() {
           minWidth="20rem"
           maxWidth="60vw"
           divider
+          onClose={() => setPaneOpen(EDITOR_PANE_ID, false)}
           disabled={!editorPaneOpen}
         >
           <EditorPane />
@@ -736,6 +738,7 @@ export function App() {
           minWidth="17rem"
           maxWidth="42vw"
           divider
+          onClose={() => setPaneOpen(SEARCH_PANE_ID, false)}
           disabled={!searchPaneOpen}
         >
           <SearchPane onSelectSession={setSelectedId} />

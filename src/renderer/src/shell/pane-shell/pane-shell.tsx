@@ -1,4 +1,5 @@
 import { useStore } from "@nanostores/react";
+import { Icon } from "../../ui/icons";
 import {
   Children,
   isValidElement,
@@ -59,6 +60,12 @@ export interface PaneProps {
   forceCollapsed?: boolean;
   /** When collapsed, float the contents over the main column on hover/focus instead of hiding them (track stays 0px). */
   hoverReveal?: boolean;
+  /**
+   * Renders a close (×) affordance pinned to the pane's top-right corner while
+   * open. The right-dock panes have no header chrome of their own, so without
+   * this the only way to collapse them is the titlebar toggle — undiscoverable.
+   */
+  onClose?: () => void;
   /**
    * Lay the pane out as a horizontal row beneath its rail (spanning every column on
    * its `side`) instead of as a vertical column. The pane then resizes on the Y axis.
@@ -295,6 +302,7 @@ export function Pane({
   id,
   maxWidth,
   minWidth,
+  onClose,
   onOverlayActiveChange,
   resizable = false,
   width,
@@ -502,6 +510,19 @@ export function Pane({
       ref={paneRef}
       style={{ gridColumn: slot.gridColumn, gridRow: slot.gridRow }}
     >
+      {onClose && (
+        <button
+          aria-label={`Close ${id}`}
+          className="absolute top-2 right-2 z-[60] flex size-5 items-center
+            justify-center rounded-[4px] text-fg/60 transition-colors
+            hover:bg-(--ui-row-hover-background) hover:text-fg"
+          data-pane-close
+          onClick={onClose}
+          tabIndex={open ? 0 : -1}
+        >
+          <Icon name="x" size={9} />
+        </button>
+      )}
       {canResize && (
         // A column shrunk above an active bottom row shares its vertical seam with that row's
         // leading edge — the sash reaches down across the row (the grid item no longer clips),
