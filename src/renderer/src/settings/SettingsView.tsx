@@ -245,24 +245,12 @@ function AboutSection({ update }: { update?: UpdateControls }) {
   return (
     <>
       <PageHeader title={t.settings.about.title} />
-      <Card title="Code-by-wire">
+      <Card title="Aerie">
         <div className="flex flex-col gap-3 px-4 py-4">
           <Wordmark />
           <p className="max-w-[54ch] text-body leading-relaxed text-fg-muted">
             {t.settings.about.tagline}
           </p>
-          <button
-            type="button"
-            onClick={() =>
-              void window.api.openExternal(
-                "https://github.com/luojiahai/code-by-wire",
-              )
-            }
-            className="inline-flex w-fit items-center gap-1.5 font-mono text-meta text-fg-faint transition-colors hover:text-primary"
-          >
-            <Icon name="github" size={12} />
-            github.com/luojiahai/code-by-wire
-          </button>
         </div>
       </Card>
       {update && <SoftwareUpdateCard update={update} />}

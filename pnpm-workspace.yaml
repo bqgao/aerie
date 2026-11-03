@@ -11,6 +11,8 @@ allowBuilds:
   better-sqlite3: true
   cpu-features: false
   electron: true
+  # Windows-only packaging helper (electron-builder Squirrel); never built on macOS.
+  electron-winstaller: false
   esbuild: true
   node-pty: true
   ssh2: false

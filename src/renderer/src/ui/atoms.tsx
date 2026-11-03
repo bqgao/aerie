@@ -122,7 +122,7 @@ export function Wordmark() {
           ░▒▓█
         </span>
         <span>
-          Code-by-<span className="text-primary">wire</span>
+          Aer<span className="text-primary">ie</span>
         </span>
       </span>
       {/* A quiet build badge: mono, faint, a notch smaller — it rides the brand, never competes. */}

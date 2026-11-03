@@ -32,7 +32,7 @@ export function AppFooter({ version }: { version: string | null }) {
           <span aria-hidden className="font-mono text-[8px] leading-none">
             ░▒▓█
           </span>
-          code-by-wire
+          Aerie
         </span>
         <span className="inline-flex h-full items-center px-1.5 font-mono text-[0.6875rem]">
           {version ? `v${version}` : "—"}

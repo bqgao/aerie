@@ -1,6 +1,6 @@
-appId: io.github.luojiahai.code-by-wire
-productName: Code-by-wire
-copyright: Copyright © 2026 luojiahai
+appId: dev.bqgao.aerie
+productName: Aerie
+copyright: Copyright © 2026 bqgao
 # Native modules are rebuilt explicitly via `pnpm rebuild:native`; don't let
 # electron-builder run its own (it misbehaves under pnpm).
 npmRebuild: false
@@ -57,7 +57,5 @@ nsis:
   oneClick: true
   perMachine: false
   deleteAppDataOnUninstall: false
-publish:
-  provider: github
-  owner: luojiahai
-  repo: code-by-wire
+# Fork: local-only builds — no upstream publish target. The bundled updater is
+# disabled (src/main/updater); keep it that way unless you own a release repo.
