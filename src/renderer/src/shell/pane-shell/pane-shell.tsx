@@ -523,6 +523,19 @@ export function Pane({
           <Icon name="x" size={9} />
         </button>
       )}
+      {onClose && (
+        <button
+          aria-label={`Close ${id}`}
+          className="absolute top-2 right-2 z-[60] flex size-5 items-center
+            justify-center rounded-[4px] text-fg/60 transition-colors
+            hover:bg-(--ui-row-hover-background) hover:text-fg"
+          data-pane-close
+          onClick={onClose}
+          tabIndex={open ? 0 : -1}
+        >
+          <Icon name="x" size={9} />
+        </button>
+      )}
       {canResize && (
         // A column shrunk above an active bottom row shares its vertical seam with that row's
         // leading edge — the sash reaches down across the row (the grid item no longer clips),
