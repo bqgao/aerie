@@ -31,7 +31,14 @@ export function createUpdater(deps: {
   send: (state: UpdateState) => void;
   isPackaged: boolean;
   currentVersion: string;
+  /** Opt-in: only a caller that explicitly passes `true` ever reaches the upstream feed. */
+  updatesEnabled?: boolean;
 }): Updater {
+  // Fork installs are local builds: the upstream feed they would check is
+  // luojiahai/code-by-wire's releases — installing one would silently replace
+  // this forked app with upstream code. Updates are opt-in (pass
+  // `updatesEnabled: true` explicitly) so a fork can never be auto-overwritten.
+  const enabled = deps.isPackaged && deps.updatesEnabled === true;
   let state = initialUpdateState(deps.currentVersion, deps.isPackaged);
   const apply = (ev: UpdaterEvent): void => {
     state = nextUpdateState(state, ev);
@@ -41,7 +48,7 @@ export function createUpdater(deps: {
   // pending, which TypeScript's local control-flow narrowing cannot otherwise observe.
   const checkIsInFlight = (): boolean => state.phase.kind === "checking";
 
-  if (deps.isPackaged) {
+  if (enabled) {
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.allowPrerelease = false;
@@ -76,7 +83,7 @@ export function createUpdater(deps: {
   return {
     getState: () => state,
     check: async () => {
-      if (!deps.isPackaged) return state;
+      if (!enabled) return state;
       if (state.phase.kind === "checking" || state.phase.kind === "downloading")
         return state;
       try {
@@ -91,7 +98,7 @@ export function createUpdater(deps: {
       return state;
     },
     download: async () => {
-      if (!deps.isPackaged || state.phase.kind !== "available") return;
+      if (!enabled || state.phase.kind !== "available") return;
       try {
         await autoUpdater.downloadUpdate();
       } catch (err) {
@@ -99,7 +106,7 @@ export function createUpdater(deps: {
       }
     },
     quitAndInstall: () => {
-      if (deps.isPackaged && state.phase.kind === "downloaded")
+      if (enabled && state.phase.kind === "downloaded")
         autoUpdater.quitAndInstall();
     },
   };
