@@ -460,6 +460,8 @@ export function LeftSidebar({
           projectActionsLabel={t.shell.sidebar.projectActions}
           absolutePathLabel={t.shell.sidebar.absolutePath}
           copyPathLabel={t.shell.sidebar.copyPath}
+          revealLabel={t.shell.sidebar.revealProject}
+          revealFailedLabel={t.shell.sidebar.revealProjectFailed}
           onToggle={() => toggleGroup(g.key)}
           onQuickAdd={() => {
             if (!cwd) return;

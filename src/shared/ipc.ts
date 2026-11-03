@@ -85,6 +85,8 @@ export const IPC = {
   openExternal: "shell:openExternal",
   revealPath: "shell:revealPath",
   openIn: "shell:openIn",
+  projectReveal: "project:reveal",
+  sessionRevealTranscript: "session:revealTranscript",
   diagnosticReport: "session:diagnosticReport",
   saveDiagnosticReport: "session:saveDiagnosticReport",
   saveSessionExport: "session-export:save",
@@ -331,6 +333,14 @@ export interface IpcApi {
   /** Open the session's working directory in `target`. The path is resolved in the main process from the
    *  session id (registry → transcript), so this works for ended sessions too. Never rejects. */
   openIn(id: string, target: OpenInTarget): Promise<OpenInResult>;
+  /** Open a project folder (the sidebar folder row) in the OS file manager. The cwd must belong to
+   *  an indexed session — main validates it, so the renderer can't reveal an arbitrary path. Never
+   *  rejects: every failure is an in-band result. */
+  projectReveal(cwd: string): Promise<OpenInResult>;
+  /** Select a session's transcript file in the OS file manager — the actual on-disk record behind
+   *  the row, for deleting it for good rather than dismissing it. The path is resolved in main and
+   *  never crosses IPC. Never rejects. */
+  sessionRevealTranscript(id: string): Promise<OpenInResult>;
   /** Build a public-safe Markdown diagnostic report for one indexed session. */
   diagnosticReport(id: string): Promise<DiagnosticReportResult>;
   /** Save the exact previewed Markdown through a native picker; no destination path crosses in. */

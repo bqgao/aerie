@@ -26,6 +26,8 @@ export function ProjectGroupRow({
   projectActionsLabel,
   absolutePathLabel,
   copyPathLabel,
+  revealLabel,
+  revealFailedLabel,
   onToggle,
   onQuickAdd,
   onQuickAddMenu,
@@ -59,6 +61,10 @@ export function ProjectGroupRow({
   projectActionsLabel: string;
   absolutePathLabel: string;
   copyPathLabel: string;
+  /** Open the project's working directory in the OS file manager (delete-whole-folder errands). */
+  revealLabel: string;
+  /** Shown in the menu when the reveal fails (the folder is gone, or main refused it). */
+  revealFailedLabel: string;
   onToggle: () => void;
   onQuickAdd: (button: HTMLButtonElement) => void;
   /** Right-click on the "+": the agent picker for the non-default agent. Absent when fewer than
@@ -83,6 +89,7 @@ export function ProjectGroupRow({
   const cwd = group.cwd;
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [revealError, setRevealError] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(
     null,
   );
@@ -147,6 +154,16 @@ export function ProjectGroupRow({
       window.removeEventListener("resize", placeMenu);
     };
   }, [menuOpen, placeMenu]);
+
+  const revealFolder = async () => {
+    const result = await window.api.projectReveal(cwd as string);
+    if (!result.ok) {
+      setRevealError(result.error ?? revealFailedLabel);
+      return;
+    }
+    setRevealError(null);
+    setMenuOpen(false);
+  };
 
   return (
     <div className="group/project relative flex min-h-[1.625rem] items-center rounded-md transition-colors duration-100 ease-out hover:bg-(--ui-row-hover-background) hover:transition-none focus-within:bg-(--ui-row-hover-background)">
@@ -217,6 +234,7 @@ export function ProjectGroupRow({
             type="button"
             onClick={(event) => {
               event.stopPropagation();
+              setRevealError(null);
               if (!menuOpen) placeMenu();
               setMenuOpen((open) => !open);
             }}
@@ -319,6 +337,26 @@ export function ProjectGroupRow({
                   <Icon name="copy" size={12} />
                   {copyPathLabel}
                 </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void revealFolder();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xs px-2 py-1.5 text-left text-xs text-fg-muted hover:bg-(--ui-control-hover-background) hover:text-fg"
+                >
+                  <Icon name="folder-open" size={12} />
+                  {revealLabel}
+                </button>
+                {revealError && (
+                  <p
+                    role="alert"
+                    className="mt-1 px-2 py-1 text-xs text-danger"
+                  >
+                    {revealError}
+                  </p>
+                )}
                 <div
                   role="separator"
                   className="mx-1 my-1 border-t border-(--ui-stroke-secondary)"

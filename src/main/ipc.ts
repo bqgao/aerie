@@ -8,7 +8,7 @@ import {
   shell,
 } from "electron";
 import { cpus, freemem, homedir, release, totalmem } from "node:os";
-import { statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import {
   IPC,
@@ -138,7 +138,12 @@ import {
 } from "@shared/stats";
 import { syncSessions } from "./sync";
 import { isHttpUrl } from "./open-external";
-import { openInTarget } from "./open-in";
+import {
+  isProjectWithinKnownDirs,
+  openInTarget,
+  revealProjectFolder,
+  revealSessionTranscript,
+} from "./open-in";
 import { isDirectory } from "./fs-dir";
 import { logError } from "./log-buffer";
 import { recentLogs } from "./log-buffer";
@@ -924,6 +929,40 @@ export function registerIpc({
       },
       id,
       target,
+    ),
+  );
+  // The sidebar's folder row opens the project's own cwd. Membership in the session index is the
+  // guard: the renderer may only reveal a path main already knows (never an arbitrary one).
+  ipcMain.handle(IPC.projectReveal, (_e, cwd: unknown) =>
+    revealProjectFolder(
+      {
+        // The row's cwd is a repository root (usually an ancestor of each member's own cwd),
+        // so membership is a path-prefix question rather than an equality one.
+        isKnownProject: (dir) =>
+          isProjectWithinKnownDirs(
+            dir,
+            (
+              db.prepare("SELECT DISTINCT cwd FROM sessions").all() as {
+                cwd: string;
+              }[]
+            ).map((r) => r.cwd),
+          ),
+        statDir: isDirectory,
+        shell,
+      },
+      cwd,
+    ),
+  );
+  // "Delete it for good": select the transcript file in Finder so the user can remove the actual
+  // record. The path is resolved in main and never crosses IPC.
+  ipcMain.handle(IPC.sessionRevealTranscript, (_e, id: unknown) =>
+    revealSessionTranscript(
+      {
+        resolveTranscriptPath: (sid) => provider.resolveTranscriptPath(sid),
+        exists: existsSync,
+        shell,
+      },
+      id,
     ),
   );
   ipcMain.handle(

@@ -302,6 +302,8 @@ export const en = {
       projectActions: "Project actions",
       absolutePath: "Absolute path",
       copyPath: "Copy path",
+      revealProject: "Reveal in Finder",
+      revealProjectFailed: "Couldn't open this folder.",
       noMatchingSessions: "No matching sessions.",
       noSessionsYet: "No sessions yet.",
       newSessionIn: (cwd: string) => `New session in ${cwd}`,
@@ -414,6 +416,8 @@ export const en = {
       deleteConfirmBody: (title: string) =>
         `“${title}” will be removed from the session list and search. The transcript file stays on disk; a session resumed from the CLI later reappears automatically.`,
       deleteConfirmLabel: "Delete",
+      revealTranscript: "Reveal transcript in Finder",
+      revealTranscriptFailed: "Couldn't reveal this transcript file.",
       comingSoonForAgent: (label: string) =>
         `Coming soon for ${label} sessions.`,
     },

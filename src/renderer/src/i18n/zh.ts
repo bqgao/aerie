@@ -268,6 +268,8 @@ export const zh: Translations = {
       projectActions: "项目操作",
       absolutePath: "绝对路径",
       copyPath: "复制路径",
+      revealProject: "在访达中显示",
+      revealProjectFailed: "无法打开此文件夹。",
       noMatchingSessions: "没有匹配的会话。",
       noSessionsYet: "暂无会话。",
       newSessionIn: (cwd) => `在 ${cwd} 中新建会话`,
@@ -366,6 +368,8 @@ export const zh: Translations = {
       deleteConfirmBody: (title: string) =>
         `“${title}”将从会话列表和搜索中移除。记录文件仍保留在磁盘上；之后从 CLI 恢复该会话时会自动重新出现。`,
       deleteConfirmLabel: "删除",
+      revealTranscript: "在访达中显示转录文件",
+      revealTranscriptFailed: "无法定位此转录文件。",
       comingSoonForAgent: (label: string) => `${label} 会话即将支持。`,
     },
     newSession: {

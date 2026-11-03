@@ -34,6 +34,9 @@ const api: AppApi = {
   openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
   revealPath: (path) => ipcRenderer.invoke(IPC.revealPath, path),
   openIn: (id, target) => ipcRenderer.invoke(IPC.openIn, id, target),
+  projectReveal: (cwd) => ipcRenderer.invoke(IPC.projectReveal, cwd),
+  sessionRevealTranscript: (id) =>
+    ipcRenderer.invoke(IPC.sessionRevealTranscript, id),
   diagnosticReport: (id) => ipcRenderer.invoke(IPC.diagnosticReport, id),
   saveDiagnosticReport: (fileName, markdown) =>
     ipcRenderer.invoke(IPC.saveDiagnosticReport, { fileName, markdown }),

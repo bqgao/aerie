@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 import type { Session } from "@shared/types";
 import { cx } from "../ui/atoms";
 import { Icon, type IconName } from "../ui/icons";
@@ -62,6 +63,23 @@ export function SessionMenuDropdown({
     deleteTitle,
   } = menu;
   const { t } = useI18n();
+  // Reveal-the-transcript failures are shown in the open menu (same in-band place the openIn
+  // errors use); cleared whenever the menu closes so a stale error can't greet the next open.
+  const [revealError, setRevealError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) setRevealError(null);
+  }, [open]);
+  const revealTranscript = async () => {
+    const result = await window.api.sessionRevealTranscript(session.id);
+    if (!result.ok) {
+      setRevealError(
+        result.error ?? t.shell.sessionMenu.revealTranscriptFailed,
+      );
+      return;
+    }
+    setRevealError(null);
+    closeMenu();
+  };
 
   return (
     <>
@@ -224,6 +242,18 @@ export function SessionMenuDropdown({
               {openInError && (
                 <p role="alert" className="mt-1 px-2 py-1 text-xs text-danger">
                   {openInError}
+                </p>
+              )}
+              {AGENTS[session.agent].capabilities.hasTranscript && (
+                <MenuItem
+                  icon="scroll-text"
+                  label={t.shell.sessionMenu.revealTranscript}
+                  onClick={() => void revealTranscript()}
+                />
+              )}
+              {revealError && (
+                <p role="alert" className="mt-1 px-2 py-1 text-xs text-danger">
+                  {revealError}
                 </p>
               )}
             </div>,
