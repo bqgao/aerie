@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { join } from "node:path";
 import { createServerCredentialStore } from "../../src/main/servers/credentials";
 import type {
   ServerCredentialStoreDeps,
@@ -30,7 +31,9 @@ function make(overrides: Partial<ServerCredentialStoreDeps> = {}) {
   });
   return { store, files };
 }
-const FILE = "/u/servers-credentials.json";
+// The store joins dir + filename with the host separator, so the test's expected key must too —
+// a hardcoded "/u/..." never matched on Windows.
+const FILE = join("/u", "servers-credentials.json");
 
 describe("createServerCredentialStore", () => {
   it("round-trips a password and a passphrase via the encrypted store", () => {

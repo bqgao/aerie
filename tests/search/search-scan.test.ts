@@ -30,13 +30,20 @@ const { DatabaseSync } = require("node:sqlite") as {
 
 const openReadonly = (path: string): SqliteDb | null => {
   try {
-    return wrap(new DatabaseSync(path, { readOnly: true }) as never);
+    const raw = new DatabaseSync(path, { readOnly: true });
+    // Windows refuses to delete a file that still has an open handle, so the scratch-dir
+    // teardown needs every read-only open tracked and closed — production lets the handle be
+    // GC'd, a test that rm -rf's the directory cannot.
+    openedHandles.push(raw as { close(): void });
+    return wrap(raw as never);
   } catch {
     return null;
   }
 };
 
 let dir = "";
+/** Every read-only sqlite handle this file opened, closed in afterEach (see openReadonly). */
+const openedHandles: Array<{ close(): void }> = [];
 const targetsOf = (files: [string, string][]): SearchScanTarget[] =>
   files.map(([name, seed], i) => {
     const path = join(dir, name);
@@ -44,9 +51,27 @@ const targetsOf = (files: [string, string][]): SearchScanTarget[] =>
     return { path, mtimeMs: 1000 + i, sessionId: `s-${name}` };
   });
 
+/** Close every tracked read-only handle (teardown, and mid-test store replacement on Windows). */
+const closeOpenedHandles = (): void => {
+  for (const handle of openedHandles.splice(0)) {
+    try {
+      handle.close();
+    } catch {
+      // already closed / never opened
+    }
+  }
+};
+
 afterEach(() => {
+  closeOpenedHandles();
   if (dir) {
-    rmSync(dir, { recursive: true, force: true });
+    // maxRetries: Windows can hold a just-closed handle for a moment before the delete wins.
+    rmSync(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 50,
+    });
     dir = "";
   }
 });
@@ -467,6 +492,7 @@ describe("search opencode source", () => {
 
     // Heal: recreate the schema (a re-created store), then a healthy pass clears the flag
     // and re-backfills from zero (no duplicate rows for the old content).
+    closeOpenedHandles(); // Windows can't unlink a file whose read-only handle is still open
     rmSync(dbPath);
     makeOcFixture(dbPath);
     const healed = searchScanStep(db, opts);
