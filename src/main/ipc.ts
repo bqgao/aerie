@@ -144,10 +144,12 @@ import {
   renderDiagnosticReport,
 } from "./diagnostic-report";
 import { saveDiagnosticReport } from "./diagnostic-save";
+import { saveSessionExport } from "./session-export-save";
 import type {
   DiagnosticReportResult,
   SaveDiagnosticReportResult,
 } from "@shared/diagnostic-report";
+import type { SaveSessionExportResult } from "@shared/session-export";
 import type { ManagedRegistry } from "./managed-registry";
 import { AGENT_PROBES } from "./cli-status";
 import { asRecord } from "./provider/codex/rollout";
@@ -949,6 +951,31 @@ export function registerIpc({
           : {};
       return saveDiagnosticReport(
         { fileName: value.fileName, markdown: value.markdown },
+        {
+          showSaveDialog: async (options) => {
+            const window = BrowserWindow.getAllWindows()[0];
+            return window
+              ? dialog.showSaveDialog(window, options)
+              : dialog.showSaveDialog(options);
+          },
+          write: (path, markdown) => writeFile(path, markdown, "utf8"),
+        },
+      );
+    },
+  );
+  ipcMain.handle(
+    IPC.saveSessionExport,
+    async (_e, request: unknown): Promise<SaveSessionExportResult> => {
+      const value =
+        request && typeof request === "object"
+          ? (request as { defaultName?: unknown; contents?: unknown })
+          : {};
+      return saveSessionExport(
+        {
+          defaultName:
+            typeof value.defaultName === "string" ? value.defaultName : "",
+          contents: typeof value.contents === "string" ? value.contents : "",
+        },
         {
           showSaveDialog: async (options) => {
             const window = BrowserWindow.getAllWindows()[0];

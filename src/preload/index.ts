@@ -6,6 +6,7 @@ import {
   type IpcRendererEvent,
 } from "electron";
 import { IPC, type AppApi } from "@shared/ipc";
+import type { SessionExportInput } from "@shared/session-export";
 import {
   fromTranscriptWire,
   type TranscriptReadWire,
@@ -36,6 +37,8 @@ const api: AppApi = {
   diagnosticReport: (id) => ipcRenderer.invoke(IPC.diagnosticReport, id),
   saveDiagnosticReport: (fileName, markdown) =>
     ipcRenderer.invoke(IPC.saveDiagnosticReport, { fileName, markdown }),
+  saveSessionExport: (input: SessionExportInput) =>
+    ipcRenderer.invoke(IPC.saveSessionExport, input),
   clipboardWriteText: (text) =>
     ipcRenderer.invoke(IPC.clipboardWriteText, text),
   clipboardReadText: (type) => ipcRenderer.invoke(IPC.clipboardReadText, type),

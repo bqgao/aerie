@@ -52,6 +52,10 @@ import type {
   DiagnosticReportResult,
   SaveDiagnosticReportResult,
 } from "./diagnostic-report";
+import type {
+  SessionExportInput,
+  SaveSessionExportResult,
+} from "./session-export";
 export { type UpdateState };
 export { type FileIoApi } from "./fileio";
 export { type PdfTempApi } from "./pdftemp";
@@ -83,6 +87,7 @@ export const IPC = {
   openIn: "shell:openIn",
   diagnosticReport: "session:diagnosticReport",
   saveDiagnosticReport: "session:saveDiagnosticReport",
+  saveSessionExport: "session-export:save",
   clipboardWriteText: "clipboard:writeText",
   clipboardReadText: "clipboard:readText",
   renameSession: "session:rename",
@@ -330,6 +335,10 @@ export interface IpcApi {
     fileName: string,
     markdown: string,
   ): Promise<SaveDiagnosticReportResult>;
+  /** Save a session-transcript Markdown export through a native picker (10 MiB cap). */
+  saveSessionExport(
+    input: SessionExportInput,
+  ): Promise<SaveSessionExportResult>;
   /** Copy text to the system clipboard (the Git popover's branch / commit copy buttons). */
   clipboardWriteText(text: string): Promise<void>;
   /** Read text from the system clipboard (terminal paste — main-process clipboard for the same

@@ -367,6 +367,8 @@ export const en = {
       unpin: "Unpin",
       copySessionId: "Copy ID",
       diagnosticReport: "Diagnostic",
+      exportMarkdown: "Export as Markdown…",
+      exportBusy: "Exporting…",
       rename: "Rename",
       resume: "Resume",
       resuming: "Resuming…",

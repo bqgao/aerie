@@ -28,6 +28,9 @@ export function SessionMenuDropdown({
     closeMenu,
     openEdit,
     diagnosticOpen,
+    exportMarkdown,
+    exportBusy,
+    exportError,
     openDiagnostic,
     closeDiagnostic,
     pinned,
@@ -91,6 +94,20 @@ export function SessionMenuDropdown({
                 label={t.shell.sessionMenu.diagnosticReport}
                 onClick={openDiagnostic}
               />
+              <MenuItem
+                icon="download"
+                label={
+                  exportBusy
+                    ? t.shell.sessionMenu.exportBusy
+                    : t.shell.sessionMenu.exportMarkdown
+                }
+                onClick={() => void exportMarkdown()}
+              />
+              {exportError ? (
+                <p className="px-3 pb-1 text-meta text-(--ui-danger)">
+                  {exportError}
+                </p>
+              ) : null}
               <MenuItem
                 icon="pencil"
                 label={t.shell.sessionMenu.rename}

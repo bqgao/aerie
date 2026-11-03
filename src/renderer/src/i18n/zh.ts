@@ -325,6 +325,8 @@ export const zh: Translations = {
       unpin: "取消置顶",
       copySessionId: "复制 ID",
       diagnosticReport: "诊断",
+      exportMarkdown: "导出为 Markdown…",
+      exportBusy: "导出中…",
       rename: "重命名",
       resume: "恢复",
       resuming: "恢复中…",

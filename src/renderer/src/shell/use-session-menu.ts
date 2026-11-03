@@ -21,6 +21,10 @@ import {
 import { openInItems, type OpenInItem } from "../workspace/open-in-items";
 import { resumeActionDisabled } from "../workspace/resume-action";
 import { cliUnusableTitle } from "../ui/cli-gating";
+import { toExportMarkdown } from "../workspace/session-export-markdown";
+
+const EXPORT_FAILED_MESSAGE = "Export failed.";
+const EXPORT_TOO_LARGE_MESSAGE = "Transcript too large to export.";
 
 export const MENU_WIDTH = 176;
 
@@ -46,6 +50,10 @@ export interface SessionMenuController {
   diagnosticOpen: boolean;
   openDiagnostic: () => void;
   closeDiagnostic: () => void;
+  /** Export this session transcript to a Markdown file. In-band errors surface via exportError. */
+  exportMarkdown: () => Promise<void>;
+  exportBusy: boolean;
+  exportError: string | null;
   /** Whether the session is currently pinned (drives the Pin/Unpin item's label and icon). */
   pinned: boolean;
   /** Toggle the pin and close the menu. */
@@ -264,6 +272,44 @@ export function useSessionMenu(
   commitRef.current = commit;
   useEffect(() => () => commitRef.current(), []);
 
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  async function exportMarkdown(): Promise<void> {
+    if (exportBusy) return;
+    setExportBusy(true);
+    setExportError(null);
+    try {
+      const read = await window.api.readTranscript(session.id);
+      if (read.status !== "changed") {
+        setExportError(EXPORT_FAILED_MESSAGE);
+        return;
+      }
+      const agentLabel = AGENTS[session.agent].label;
+      const contents = toExportMarkdown(read.doc, {
+        title: session.title,
+        agent: agentLabel,
+        project: session.project || null,
+        exportedMs: Date.now(),
+      });
+      const res = await window.api.saveSessionExport({
+        defaultName:
+          (session.title || session.id)
+            .replace(/[\\/:*?"<>|]/g, "_")
+            .slice(0, 80) + ".md",
+        contents,
+      });
+      if (res.kind === "write-failed") setExportError(EXPORT_FAILED_MESSAGE);
+      else if (res.kind === "too-large")
+        setExportError(EXPORT_TOO_LARGE_MESSAGE);
+      else setOpen(false);
+    } catch {
+      setExportError(EXPORT_FAILED_MESSAGE);
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
   async function handleOpenIn(target: OpenInTarget): Promise<void> {
     if (openInBusy) return;
     setOpenInBusy(true);
@@ -321,6 +367,9 @@ export function useSessionMenu(
     : t.shell.sessionMenu.endTitleUnavailable;
 
   return {
+    exportMarkdown,
+    exportBusy,
+    exportError,
     open,
     toggleMenu,
     openAt,
