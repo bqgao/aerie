@@ -189,6 +189,10 @@ export function QuickPalette({
   const rowClass =
     "flex h-6 w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-xs text-(--ui-text-secondary) transition-colors duration-100 ease-out hover:bg-(--ui-row-hover-background) hover:text-fg hover:transition-none";
 
+  // ui/ModalShell does NOT gate its portal on `open` (it only gates the Escape
+  // listener); the palette must gate itself or it renders from app launch, forever.
+  if (!open) return null;
+
   return (
     <ModalShell
       labelledBy="quick-palette-title"
