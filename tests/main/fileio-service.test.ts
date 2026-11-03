@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { resolve } from "node:path";
 import {
   createFileIoService,
   type FileIoFs,
 } from "../../src/main/fileio/fileio-service";
 import type { FileIoReadResult } from "../../src/shared/fileio";
+
+/** The gate resolves every accepted path before touching the fs, and a POSIX literal resolves
+ *  differently on Windows (D:\notes\... vs /notes/...). Key the fake by the same resolve() the
+ *  service uses so the suite exercises one path shape on every host. */
+const at = (path: string): string => resolve(path);
 
 /** In-memory FileIoFs: byte maps for files, call history for the write primitives so the tests
  *  can assert the temp→rename order (the atomic-trade contract) directly. */
@@ -11,7 +17,7 @@ function fakeFs(seed: Record<string, string | Buffer> = {}) {
   const files = new Map<string, Buffer>();
   for (const [path, value] of Object.entries(seed)) {
     files.set(
-      path,
+      at(path),
       Buffer.isBuffer(value) ? value : Buffer.from(value, "utf8"),
     );
   }
@@ -234,10 +240,12 @@ describe("createFileIoService — write (atomic temp+rename)", () => {
     });
     const r = fake.state.renames[0];
     expect(r).toBeTruthy();
-    expect(r.to).toBe("/notes/old.md");
-    expect(r.from.startsWith("/notes/old.md.cbw-tmp-")).toBe(true);
-    expect(r.from).not.toBe("/notes/old.md");
-    expect(fake.state.files.get("/notes/old.md")?.toString()).toBe("new body");
+    expect(r.to).toBe(at("/notes/old.md"));
+    expect(r.from.startsWith(`${at("/notes/old.md")}.cbw-tmp-`)).toBe(true);
+    expect(r.from).not.toBe(at("/notes/old.md"));
+    expect(fake.state.files.get(at("/notes/old.md"))?.toString()).toBe(
+      "new body",
+    );
     // the temp did not survive the rename
     expect(fake.state.files.has(r.from)).toBe(false);
   });

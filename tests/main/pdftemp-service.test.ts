@@ -7,6 +7,7 @@
  * the registration shape in its own family).
  */
 import { describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
 import {
   createPdfTempService,
@@ -79,7 +80,7 @@ describe("the pull: one server PDF → one content-hash temp copy", () => {
     if (!res.ok) return;
     expect(res.bytes).toBe(bytes.length);
     expect(res.cached).toBe(false);
-    const finalPath = `/ud/cache/pdf/${sha(bytes)}.pdf`;
+    const finalPath = join("/ud/cache/pdf", `${sha(bytes)}.pdf`);
     expect(fs.saves.get(finalPath)).toEqual(bytes);
     expect(res.fileUrl).toBe(pdfFileUrlOf(finalPath));
     // staging is consumed — no stray files around the cache

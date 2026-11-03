@@ -422,6 +422,10 @@ function makeOcFixture(path: string, opts: OcFixtureOptions = {}): void {
   } catch {
     // A drifted fixture rejects the seeds intentionally — the engine's feature-detect is what's
     // under test there, before any row read.
+  } finally {
+    // Windows won't unlink a database whose write handle is still open; the fixtures are small,
+    // so seed-and-close rather than holding them for the test.
+    (db as unknown as { close(): void }).close();
   }
 }
 

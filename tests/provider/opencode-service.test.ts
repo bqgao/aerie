@@ -45,7 +45,8 @@ describe("resolveOpencodeConfigDir", () => {
       resolveOpencodeConfigDir({ OPENCODE_CONFIG_DIR: "/x", HOME: "/h" }),
     ).toBe("/x");
     expect(resolveOpencodeConfigDir({ HOME: "/h" })).toBe(
-      "/h/.config/opencode",
+      // join, not a literal: the resolver builds the path with the host separator.
+      join("/h", ".config", "opencode"),
     );
   });
 });
