@@ -24,6 +24,7 @@ export type IconName =
   | "coins"
   | "copy"
   | "database"
+  | "download"
   | "ellipsis"
   | "eye"
   | "eye-off"
