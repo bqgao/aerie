@@ -147,14 +147,18 @@ export function modelColorOf(raw: string | null): string {
 }
 
 /** The contributions calendar's intensity ramp (#115), indexed by intensityLevel's 0..4 output: level 0 is
- *  the empty-day track; 1–4 climb an engaged-teal heat (faint → full via color-mix opacity). The Overview's
- *  one spot of accent — activity-over-time gets the single splash of color. Tokens stay in index.css. */
+ *  the empty-day track; 1–4 climb a two-hue heat (cool teal → warm amber) that progresses in BOTH hue and
+ *  lightness, so "Less → More" reads as a genuine color progression rather than one hue fading in — and the
+ *  lightness climb keeps the order legible for color-blind users (never hue alone). The per-step colors are
+ *  theme-driven tokens (--cal-1..--cal-4), defined for both the dark and light palettes in index.css, so the
+ *  ramp follows the active theme with no change here. The Overview's one spot of color — activity-over-time
+ *  gets the splash. */
 export const CALENDAR_RAMP = [
-  "var(--color-ink-850)", // 0 — no activity
-  "color-mix(in srgb, var(--color-primary) 28%, transparent)", // 1
-  "color-mix(in srgb, var(--color-primary) 52%, transparent)", // 2
-  "color-mix(in srgb, var(--color-primary) 76%, transparent)", // 3
-  "var(--color-primary)", // 4 — peak
+  "var(--color-ink-850)", // 0 — no activity (neutral empty-day track)
+  "var(--cal-1)", // 1 — dim teal
+  "var(--cal-2)", // 2 — brighter teal
+  "var(--cal-3)", // 3 — warm sage/olive
+  "var(--cal-4)", // 4 — amber peak
 ] as const;
 
 /** Whether a session's `Family` can be trusted when no raw model was ever recorded: only a Managed

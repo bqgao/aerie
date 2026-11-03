@@ -28,6 +28,20 @@
   --color-primary-bright: #ffffff;
   --color-primary-deep: #c8c8c8;
 
+  /* Contributions-calendar heat ramp (#115) — four filled steps that climb BOTH hue and lightness, so
+     "Less → More" reads as a genuine two-hue progression (cool teal → warm amber), not one hue fading
+     in. Dark-mode values (on the ~#141414 card): lightness climbs with intensity so each step is
+     brighter than the last; the hue warms from a dim desaturated teal through sage into the brand
+     amber (--color-accent neighborhood) at the peak. The joint hue+lightness climb keeps the steps
+     distinguishable for color-blind users (never hue alone). Designed in OKLCH on a teal(≈200°)→
+     amber(≈80°) path, then pinned to hex to match this file's house style. Light-mode overrides live
+     in the :root[data-theme="light"] block; level 0 stays the neutral empty-day track (--color-ink-850),
+     not part of this ramp. */
+  --cal-1: #407375; /* dim teal        — lowest activity */
+  --cal-2: #4f988f; /* brighter cyan-teal */
+  --cal-3: #98b77a; /* warm sage       — hue crosses to the warm side */
+  --cal-4: #ecbc5e; /* amber/gold      — peak activity */
+
   /* Semantic */
   --color-danger: #f2685c; /* diff remove, failed, destructive */
   --color-ok: #46c57a; /* diff add, cache savings, done */
@@ -420,6 +434,16 @@
   /* Primary hover/press state overrides for light mode — lighter gray for hover, pure black for press */
   --color-primary-bright: #2e2e2e;
   --color-primary-deep: #000000;
+
+  /* Contributions-calendar heat ramp (#115), light-mode variant. Same teal → amber hue journey as the
+     dark block, but on a white card "more" must read DARKER + more saturated, so luminance DESCENDS as
+     intensity climbs (0.45 → 0.19) — the inverse of the dark ramp's climb, giving each step the same
+     "stronger = more activity" reading against its own background. Still a joint hue+lightness shift,
+     so the order survives for color-blind users. Level 0 stays the neutral track (--color-ink-850). */
+  --cal-1: #88bcc0; /* soft pale teal  — lowest activity */
+  --cal-2: #50a39a; /* teal */
+  --cal-3: #818e46; /* olive-gold      — hue crosses to the warm side */
+  --cal-4: #a76c00; /* deep amber      — peak activity */
 }
 
 /* Terminal theme override — independent of App theme above (:root[data-theme]); driven by
