@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FAFBF8"/>
-      <stop offset="1" stop-color="#E8EBE3"/>
+      <stop offset="0" stop-color="#F4F1EA"/>
+      <stop offset="1" stop-color="#E5E0D3"/>
     </linearGradient>
     <clipPath id="tileClip">
       <rect x="100" y="100" width="824" height="824" rx="184"/>
@@ -10,13 +10,10 @@
   </defs>
   <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>
   <g clip-path="url(#tileClip)">
-    <g stroke="#1F6F4A" stroke-linecap="round" fill="none">
-      <path d="M 300 672 A 212 212 0 0 1 724 672" stroke-width="44"/>
-      <path d="M 372 584 A 140 140 0 0 1 652 584" stroke-width="44"/>
-      <path d="M 512 588 L 512 444" stroke-width="44"/>
+    <g>
+      <path d="M 512 109.8 C 642.4 242.6 721.1 387.8 721.1 510.8 C 721.1 653.5 627.6 752.5 512 752.5 C 396.4 752.5 302.9 653.5 302.9 510.8 C 302.9 387.8 381.6 242.6 512 109.8 Z" fill="#1E3947"/>
+      <circle cx="512" cy="528" r="49.2" fill="#C89B3C"/>
     </g>
-    <circle cx="512" cy="392" r="46" fill="#1F6F4A"/>
-    <path d="M 300 736 L 724 736" stroke="#1F6F4A" stroke-opacity="0.25" stroke-width="16" stroke-linecap="round" fill="none"/>
   </g>
-  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="3"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#000000" stroke-opacity="0.06" stroke-width="3"/>
 </svg>
