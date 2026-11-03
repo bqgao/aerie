@@ -1,88 +1,121 @@
-# <img src="docs/assets/logo.svg" alt="" height="64" align="center"> Code-by-wire
+# <img src="build/icon.svg" alt="" height="56" align="center"> Aerie
 
 English | [简体中文](README.zh-CN.md)
 
-[![CI](https://img.shields.io/github/actions/workflow/status/luojiahai/code-by-wire/ci.yml?style=flat-square&label=CI)](https://github.com/luojiahai/code-by-wire/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/luojiahai/code-by-wire?style=flat-square)](https://github.com/luojiahai/code-by-wire/releases)
+A desktop cockpit for coding agents. Aerie watches the [Claude Code](https://docs.anthropic.com/en/docs/claude-code),
+[Codex](https://developers.openai.com/codex/cli) and [opencode](https://opencode.ai) sessions already running on your
+machine — transcripts, telemetry, terminals — and lets you drive them from one window.
 
-[![Buy Me A Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=luojiahai&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://buymeacoffee.com/luojiahai)
+> **Fork notice.** Aerie is a personal fork of
+> [luojiahai/code-by-wire](https://github.com/luojiahai/code-by-wire) (MIT). The upstream app is the
+> foundation; this fork re-brands it, rebuilds it for local macOS/Windows use, and layers on the
+> changes listed under [What this fork changes](#what-this-fork-changes). Upstream is the original
+> work and deserves the credit for the architecture it provides.
 
-Pilot coding agents (Claude Code, Codex) and monitor their telemetry from
-one cockpit.
+![Aerie: a live session with the session rail, transcript, and telemetry panels](docs/assets/cbw-screenshot.png)
 
-![Code-by-wire: a live Claude Code session with the session rail, transcript, and telemetry panels](docs/assets/cbw-screenshot.png)
+## What it does
 
-## Features
+Open the app and every agent session already running on your machine is in the rail — grouped by
+project, searchable, each flagging its live state.
 
-Needs Claude Code and/or Codex installed locally. Open the app and every
-session already running on your machine is there.
+- **Every session in one rail.** Grouped by project, collapsible, searchable, with a live state
+  badge per row.
+- **Drive, fork, resume, or just watch.** Spawn a session in an embedded terminal, fork a live one,
+  resume one you started elsewhere, or observe read-only.
+- **The full transcript.** Every message, tool call, and result reconstructed from disk and rendered
+  cleanly — plus full-text search across every transcript on the machine.
+- **The full telemetry.** Context pressure, spend, token throughput, duty cycle, git state, tasks,
+  subagents, and background shells, live per session.
+- **The whole story.** A cross-session Stats view with a year-long contributions calendar.
+- **Your rate limits in view.** The account's rate-limit windows, read from disk, with reset
+  countdowns.
 
-- **Every session in one rail.** Manage every session running on your
-  machine from one rail: grouped by project, searchable, each flagging its
-  live state.
-- **Drive, fork, or just watch.** Spawn a session in an embedded terminal,
-  fork a live one, resume one you started elsewhere, or observe it read-only.
-- **The full transcript.** Every message, tool call, and result,
-  reconstructed from disk and rendered cleanly.
-- **The full telemetry.** Context pressure, spend, token throughput, duty
-  cycle, git, tasks, subagents, and background shells, live per session.
-- **The whole story.** A cross-session Stats view with a year-long
-  contributions calendar and exact, never-estimated totals.
-- **Your rate limits in view.** Your account's rate-limit windows, read
-  straight from disk, with live reset countdowns.
+## What this fork changes
 
-## Download
+- **Aerie branding and icon.** New app icon (ink-teal raptor mark on an ivory paper tile) shipped as
+  a 824/1024-grid `.icns` for Finder/Dock on macOS ≤ 15, with the full-bleed render kept as the
+  macOS 26 (Tahoe) escape hatch.
+- **Delete session records.** The session menu and each project folder can dismiss ended sessions:
+  a tombstone table keeps the next sync from re-adding them, their search rows are purged, and a
+  transcript resumed later from the CLI comes back on purpose. Transcripts stay on disk.
+- **Reveal in Finder.** Project rows and session rows can open their folder / transcript file
+  directly, so a dead test project can be cleaned up at the source.
+- **Context menus that fit.** The session menu clamps to the viewport (flip, then slide) and
+  scrolls past a viewport-height cap instead of running off the bottom of the window.
+- **Local-first packaging.** No update server, no publish target: `pnpm dist` / `pnpm dist:win`
+  produce installers you run yourself.
 
-| Platform              | File                                                                                                                              |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| macOS · Apple Silicon | [`Code-by-wire-arm64.dmg`](https://github.com/luojiahai/code-by-wire/releases/latest/download/Code-by-wire-arm64.dmg)             |
-| macOS · Intel         | [`Code-by-wire-x64.dmg`](https://github.com/luojiahai/code-by-wire/releases/latest/download/Code-by-wire-x64.dmg)                 |
-| Windows · x64         | [`Code-by-wire-Setup-x64.exe`](https://github.com/luojiahai/code-by-wire/releases/latest/download/Code-by-wire-Setup-x64.exe)     |
-| Windows · ARM64       | [`Code-by-wire-Setup-arm64.exe`](https://github.com/luojiahai/code-by-wire/releases/latest/download/Code-by-wire-Setup-arm64.exe) |
+## Install
 
-One click starts the download. Always the latest release. You'll need
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code) and/or
-[Codex](https://developers.openai.com/codex/cli) installed locally, so there
-are sessions to observe and control.
+| Platform              | Artifact                        |
+| --------------------- | ------------------------------- |
+| macOS · Apple Silicon | `release/Aerie-arm64.dmg`       |
+| Windows · x64         | `release/Aerie-Setup-x64.exe`   |
+| Windows · ARM64       | `release/Aerie-Setup-arm64.exe` |
 
-On macOS, open the `.dmg` and drag Code-by-wire to Applications. The app is
-signed and notarized by Apple, so it opens straight away. On Windows, run the
-`.exe`; it's unsigned for now, so if SmartScreen warns, click
+Locally built apps are **unsigned**. On macOS the first launch may need right-click → **Open**, or
+`xattr -dr com.apple.quarantine /Applications/Aerie.app`. On Windows, SmartScreen warns: click
 **More info → Run anyway**.
 
-Once installed, the app checks for new releases on launch and updates from
-Settings → About.
+You need Claude Code and/or Codex installed locally, so there are sessions to observe and control.
 
 ## Build from source
 
-```
+Requires Node 24 and pnpm.
+
+```sh
 pnpm install
-pnpm rebuild:native   # rebuild better-sqlite3 + node-pty for Electron's ABI
-pnpm dist             # macOS: writes the .dmg to release/
-pnpm dist:win         # Windows: writes the .exe to release/
-```
-
-A locally built app is unsigned: on macOS the first launch may need a
-right-click → **Open**, or clearing the quarantine flag with
-`xattr -dr com.apple.quarantine /Applications/Code-by-wire.app`; on Windows,
-SmartScreen may warn: click **More info → Run anyway**.
-
-## Develop
-
-```
-pnpm install
-pnpm rebuild:native   # rebuild better-sqlite3 + node-pty for Electron's ABI
+pnpm rebuild:native   # better-sqlite3 + node-pty against Electron's ABI
 pnpm dev              # launch the app
 ```
 
-`pnpm test` runs the provider read tests over the redacted `.claude` fixtures
-in `tests/fixtures/`. `pnpm typecheck` checks the main and renderer projects.
+```sh
+pnpm dist             # macOS: release/Aerie-arm64.dmg (+ zip)
+pnpm dist:win         # Windows: release/Aerie-Setup-{x64,arm64}.exe
+```
 
-This is a personal project and isn't taking outside code, but bug reports and
-ideas are welcome. [Open an issue](https://github.com/luojiahai/code-by-wire/issues/new/choose),
-or see [CONTRIBUTING.md](CONTRIBUTING.md).
+**Cross-building Windows installers on macOS.** `electron-builder.yml` sets `npmRebuild: false`
+(native modules are rebuilt by hand because electron-builder's own rebuild misbehaves under pnpm),
+so a Windows build inherits the host's `better_sqlite3.node` and crashes at startup. Stage the
+target prebuild first, then restore the host's binaries afterwards:
+
+```sh
+cd node_modules/better-sqlite3
+pnpm exec prebuild-install --runtime electron --target 41.7.2 --arch x64 --platform win32
+cd ../..
+pnpm exec electron-builder --win --x64 --publish never
+pnpm rebuild:native   # restore darwin binaries
+```
+
+`node-pty` needs no staging: it bundles `prebuilds/` for every platform and its loader falls back
+from `build/Release` to `prebuilds/<platform>-<arch>`.
+
+## Checks
+
+```sh
+pnpm test          # vitest: tests/**/*.test.ts
+pnpm typecheck     # tsc for the node and web projects
+pnpm lint          # eslint
+pnpm format:check  # prettier
+```
+
+## Architecture
+
+Electron, three processes:
+
+- **Main** — request/response only: no background timers, no `fs.watch`; the renderer polls.
+  Providers (`claude`, `codex`, `opencode`) read sessions and transcripts off disk on demand.
+- **Parse worker** — a lazily forked `utilityProcess` hosting poll-driven transcript parsing off the
+  main thread, degrading to in-process code on worker fault.
+- **Renderer** — React 19 + Tailwind 4 + xterm. `preload` exposes a single `window.api`.
+
+Shared types, IPC channel names and the agent registry live in `src/shared/` (`@shared/*`). The
+sidebar gates every surface on `AgentCapabilities` from that registry, never on an agent id.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — © 2026 luojiahai (upstream), © 2026 bqgao (this fork).
+
+The `website/` directory is the upstream marketing site, kept for reference; it is not deployed from
+this repository.

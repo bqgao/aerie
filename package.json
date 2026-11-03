@@ -3,15 +3,15 @@
   "private": true,
   "version": "0.1.49",
   "description": "Pilot coding agents (Claude Code, Codex) and monitor their telemetry from one cockpit.",
-  "author": "luojiahai",
+  "author": "bqgao (fork of luojiahai/code-by-wire)",
   "license": "MIT",
-  "homepage": "https://github.com/luojiahai/code-by-wire",
+  "homepage": "https://github.com/bqgao/aerie",
   "repository": {
     "type": "git",
-    "url": "https://github.com/luojiahai/code-by-wire.git"
+    "url": "https://github.com/bqgao/aerie.git"
   },
   "bugs": {
-    "url": "https://github.com/luojiahai/code-by-wire/issues"
+    "url": "https://github.com/bqgao/aerie/issues"
   },
   "engines": {
     "node": ">=24"

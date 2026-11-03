@@ -89,8 +89,14 @@ export interface RevealProjectDeps {
 export function isProjectWithinKnownDirs(
   dir: string,
   knownCwds: readonly string[],
+  /** Windows paths are case-insensitive, so `C:\Work\Proj` and `c:\work\proj` are the same folder.
+   *  Defaults to the host platform; tests pass it explicitly. */
+  caseInsensitive = process.platform === "win32",
 ): boolean {
-  const norm = (p: string): string => p.replace(/[\\/]+$/, "");
+  const norm = (p: string): string => {
+    const trimmed = p.replace(/[\\/]+$/, "");
+    return caseInsensitive ? trimmed.toLowerCase() : trimmed;
+  };
   const d = norm(dir);
   if (!d) return false;
   return knownCwds.some((raw) => {

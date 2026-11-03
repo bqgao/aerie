@@ -288,3 +288,23 @@ describe("isProjectWithinKnownDirs", () => {
     ).toBe(false);
   });
 });
+
+describe("isProjectWithinKnownDirs on Windows", () => {
+  const known = ["C:\\work\\Proj\\src"];
+
+  it("matches regardless of case when the flag is on", () => {
+    expect(isProjectWithinKnownDirs("c:\\WORK\\proj", known, true)).toBe(true);
+  });
+
+  it("stays case-sensitive on POSIX hosts", () => {
+    expect(
+      isProjectWithinKnownDirs("/work/Proj", ["/work/proj/src"], false),
+    ).toBe(false);
+  });
+
+  it("still refuses a sibling prefix on Windows", () => {
+    expect(isProjectWithinKnownDirs("C:\\work\\Proj-old", known, true)).toBe(
+      false,
+    );
+  });
+});
