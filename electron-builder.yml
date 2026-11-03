@@ -19,7 +19,14 @@ asarUnpack:
   - "**/node-pty/build/Release/*"
 mac:
   category: public.app-category.developer-tools
-  icon: build/icon.png
+  # Bundle icon: the artwork on the traditional 824/1024 grid (rounded tile, transparent corners).
+  # This fork runs on macOS <=15, which draws the static bundle icns as-is in Finder/Spotlight/Get
+  # Info/the DMG with no system mask — a full-bleed square reads oversized and hard-cornered next
+  # to native icons. If this machine ever moves to macOS 26 (Tahoe), flip `icon` back to
+  # build/icon.png (full-bleed; the system masks it to the squircle): Tahoe keys the mask off
+  # edge-pixel alpha, and a grid icon with transparent edges gets shrunk into the grey
+  # "icon jail" frame.
+  icon: build/icon-mac.png
   # Force ${arch} into the zip filename so the arm64 and x64 update zips stay distinct in latest-mac.yml
   # (the same arch-clobber reasoning behind the dmg/nsis artifactName overrides). The dmg keeps its own
   # dmg.artifactName, so this only names the zip.
@@ -42,9 +49,8 @@ dmg:
   artifactName: ${productName}-${arch}.${ext}
   title: ${productName} ${version}
 win:
-  # icon.png is a hard-cornered full-bleed square so macOS Tahoe can mask it to a squircle; Windows
-  # draws icons as-is with no rounded-rect frame, so it gets its own render with the tile's rounded
-  # corners baked in.
+  # Windows draws icons as-is with no rounded-rect frame, so it gets its own render with the
+  # tile's rounded corners baked in.
   icon: build/icon-win.png
   target:
     - target: nsis

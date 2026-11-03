@@ -2,32 +2,35 @@
 // Electron/Chromium. No external image tooling required. electron-builder converts the
 // PNGs to platform icons at build time. Run: pnpm run icon
 //
-// Three outputs from the one source:
-//   build/icon.png                     — macOS/Linux. Full bleed: the dark tile fills the whole
-//                                        canvas, opaque to every edge (no margin, no rounded
-//                                        corners). macOS Tahoe (26) masks every icon to one
+// Four outputs from the one source:
+//   build/icon.png                     — Full bleed, kept for macOS Tahoe (26): the tile fills the
+//                                        whole canvas, opaque to every edge (no margin, no
+//                                        rounded corners). macOS Tahoe masks every icon to one
 //                                        uniform squircle and keys off edge-pixel alpha: >=253 it
 //                                        clips the art to a full-size squircle, <=252 it shrinks
 //                                        the art into a grey "icon jail" frame. A baked-in grid
-//                                        margin (transparent edges) gets jailed and renders small,
-//                                        so we hand Tahoe a full-bleed square and let the system
-//                                        supply the corners. On macOS <=15 this bundle icon still
-//                                        shows as a hard-cornered square (Finder/Spotlight/Get
-//                                        Info/the DMG all read this one static file and can't
-//                                        differ by OS version) — the Dock icon specifically is
-//                                        patched at runtime instead, see the third output below.
+//                                        margin (transparent edges) gets jailed and renders
+//                                        small. Not referenced by this fork's electron-builder.yml
+//                                        (this machine runs macOS <=15), but kept generated so
+//                                        flipping the bundle icon after a Tahoe upgrade is a
+//                                        one-line config change.
+//   build/icon-mac.png                 — macOS bundle icon (this fork). Same artwork on the
+//                                        traditional 824/1024 grid: rounded tile (rx 184) with
+//                                        transparent corners. macOS <=15 draws the static bundle
+//                                        icns as-is in Finder/Spotlight/Get Info/the DMG with no
+//                                        system mask, so a full-bleed square reads oversized and
+//                                        hard-cornered next to native icons.
 //   build/icon-win.png                 — Windows. Same artwork re-cropped to the tile's exact
 //                                        bounds, keeping the tile's rounded corners. Windows draws
 //                                        icons as-is with no rounded-rect frame, so it needs the
 //                                        rounding baked in.
-//   src/main/dock-icon-legacy-asset.ts — macOS <=15 Dock icon override. The artwork on the
-//                                        traditional 824/1024 grid: a rounded tile (rx 184)
-//                                        with transparent corners instead of the source's
-//                                        full-bleed background, base64-embedded so
-//                                        src/main/dock-icon.ts can swap the running app's Dock
-//                                        icon to it at launch on pre-Tahoe macOS. Pre-Tahoe
-//                                        Dock icons are not system-masked, so a full-bleed
-//                                        square there reads oversized next to native icons.
+//   src/main/dock-icon-legacy-asset.ts — macOS <=15 Dock icon override. Base64 of the same render
+//                                        as icon-mac.png, so src/main/dock-icon.ts can swap the
+//                                        running app's Dock icon to it at launch on pre-Tahoe
+//                                        macOS (also covers `pnpm dev`, where the bundle icon is
+//                                        Electron's own). Pre-Tahoe Dock icons are not
+//                                        system-masked, so a full-bleed square there reads
+//                                        oversized next to native icons.
 //
 // Forces a 2x device scale and downscales, so the result is crisp regardless of the
 // host's display (a 1x monitor would otherwise rasterize 1:1 with no supersampling),
@@ -109,15 +112,19 @@ app.whenReady().then(async () => {
   console.log("wrote build/icon-win.png");
 
   // Traditional pre-Tahoe style: the same artwork on the classic 824/1024 grid with transparent
-  // corners — the source's full-bleed background becomes a rounded tile. Pre-Tahoe Dock icons
-  // are drawn as-is (no system mask), so this is what keeps the icon optically the same size as
-  // native ones. Embedded as a base64 data URL so the running app can swap the Dock icon to it
-  // at launch (see src/main/dock-icon.ts) with no packaged-resource plumbing.
+  // corners — the source's full-bleed background becomes a rounded tile. macOS <=15 draws the
+  // bundle icns as-is (no system mask), so this is what keeps Finder/Dock/Spotlight icons
+  // optically the same size as native ones. Written to build/icon-mac.png (the bundle icon this
+  // fork ships, see electron-builder.yml) and embedded as a base64 data URL so the running app
+  // can swap the Dock icon to it at launch (see src/main/dock-icon.ts) with no packaged-resource
+  // plumbing.
   const svgLegacy = svg.replace(
     '<rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>',
     '<rect x="100" y="100" width="824" height="824" rx="184" fill="url(#bg)"/>',
   );
   const legacyPng = await capture(svgLegacy);
+  writeFileSync(join(root, "build", "icon-mac.png"), legacyPng);
+  console.log("wrote build/icon-mac.png");
   const legacyDataUrl = `data:image/png;base64,${legacyPng.toString("base64")}`;
   writeFileSync(
     join(root, "src", "main", "dock-icon-legacy-asset.ts"),
