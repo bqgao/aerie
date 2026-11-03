@@ -110,6 +110,7 @@ import {
   type WalkCache,
 } from "./analytics/scan";
 import { collectCodexScanTargets, scanCodexStep } from "./analytics/codex-scan";
+import { scanOpencodeStatsStep } from "./analytics/opencode-stats";
 import { listRollouts } from "./provider/codex/rollout";
 import { indexTranscripts } from "./provider/claude/discover";
 import type {
@@ -1247,7 +1248,28 @@ export function registerIpc({
     now: number,
   ): ScanProgress & { wrote: boolean } => {
     const dir = statsDirFor(agent);
-    if (!analyticsDb || !dir) return { ...doneProgress(), wrote: false };
+    if (!analyticsDb) return { ...doneProgress(), wrote: false };
+    if (agent === "opencode") {
+      // Single-store source: no file walk — a bounded row-window step against
+      // the service's own SQLite (readonly). Absent store scans "done".
+      if (!opencodeDbPath) return { ...doneProgress(), wrote: false };
+      try {
+        const step = scanOpencodeStatsStep(
+          analyticsDb,
+          openReadonlyDb,
+          opencodeDbPath,
+        );
+        return { ...step, wrote: step.wrote };
+      } catch (err) {
+        logError(
+          "opencode-stats-step-failed",
+          "opencode stats step failed; serving done progress",
+          err,
+        );
+        return { ...doneProgress(), wrote: false };
+      }
+    }
+    if (!dir) return { ...doneProgress(), wrote: false };
     try {
       const walk = scanTargets(agent, now);
       let step =
