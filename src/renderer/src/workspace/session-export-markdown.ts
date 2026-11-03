@@ -8,7 +8,7 @@ function fenceFor(content: string): string {
   return fence;
 }
 
-function renderDiff(hunk: DiffHunk, status: string): string {
+function renderDiff(hunk: DiffHunk): string {
   const lines: string[] = [];
   for (const line of hunk.removed) lines.push("- " + line);
   for (const line of hunk.added) lines.push("+ " + line);
@@ -66,7 +66,7 @@ export function toExportMarkdown(doc: TranscriptDoc, meta: ExportMeta): string {
         "**" + event.tool + " " + event.file + "** _(" + event.status + ")",
       );
       out.push("");
-      const d = renderDiff(event.hunk, event.status);
+      const d = renderDiff(event.hunk);
       if (d) {
         out.push(d);
         out.push("");

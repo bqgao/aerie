@@ -17,30 +17,6 @@ export interface ExportSessionInfo {
   readonly agentLabel: string;
 }
 
-const fenceFor = (body: string): string => {
-  let longest = 3;
-  let run = 0;
-  for (const ch of body) {
-    if (ch === "`") {
-      run += 1;
-      if (run >= longest) longest = run + 1;
-    } else run = 0;
-  }
-  return "`".repeat(Math.min(longest, 12));
-};
-
-const esc = (s: string): string => s.replace(/\r/g, "");
-
-const toolRow = (
-  label: string,
-  tool: string,
-  summary: string,
-  hasDetail: boolean,
-): string =>
-  `- ${label} \`${tool}\`${hasDetail ? "" : " — " + summary || ""}${
-    hasDetail ? ` — ${summary}` : ""
-  }`;
-
 const renderEvent = (doc: TranscriptDoc, index: number): string => {
   void doc;
   const lines: string[] = [];
@@ -68,7 +44,7 @@ export const toExportMarkdown = (
   for (let i = 0; i < doc.events.length; i += 1) {
     const event = doc.events[i];
     if (!("parts" in event)) continue;
-    body.push(renderEvent({ ...doc, events: [event] } as TranscriptDoc, i));
+    body.push(renderEvent({ ...doc, events: [event] }, i));
   }
   const md = header.concat(body).join("\n");
   if (md.length > MAX_SESSION_EXPORT_BYTES) {
